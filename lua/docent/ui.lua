@@ -50,10 +50,6 @@ function M.show_float(text)
     maxlen = math.max(maxlen, vim.fn.strdisplaywidth(l))
   end
   local width = math.min(60, maxlen)
-  local height = 0
-  for _, l in ipairs(lines) do
-    height = height + math.max(1, math.ceil(vim.fn.strdisplaywidth(l) / width))
-  end
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].bufhidden = "wipe"
@@ -62,13 +58,17 @@ function M.show_float(text)
     row = 1,
     col = 0,
     width = width,
-    height = math.min(height, 10),
+    height = 1,
     style = "minimal",
     border = "rounded",
     title = " Docent ",
     focusable = false,
   })
   vim.wo[float_win].wrap = true
+  vim.wo[float_win].linebreak = true
+  -- the estimate ceil(len/width) undercounts word-boundary wrapping; ask for the real height
+  local wrapped = vim.api.nvim_win_text_height(float_win, {}).all
+  vim.api.nvim_win_set_height(float_win, math.min(wrapped, 10))
   local win = float_win
   -- deferred so the jump's own CursorMoved doesn't instantly close it
   vim.defer_fn(function()
