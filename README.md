@@ -41,7 +41,17 @@ Keep Neovim open with `setup()` called, then ask your agent things like:
 - "Where do we dedupe pre-meeting deliveries?" → the agent calls `jump_to`; your cursor lands there with a narration float.
 - "Walk me through the import flow" → the agent queues tour stops; you pace through them with `]t` / `[t` (or `:DocentNext` / `:DocentPrev` / `:DocentStop <n>`).
 
-Commands: `:DocentNext`, `:DocentPrev`, `:DocentStop <n>`, `:DocentRestart` (back to stop 1), `:DocentSave <title>`, `:DocentTours` (picker), `:DocentMcpCommand`. Range highlights use the `DocentRange` group (links to `Visual`).
+Commands: `:DocentNext`, `:DocentPrev`, `:DocentStop <n>`, `:DocentRestart` (back to stop 1 of the active tour), `:DocentBack` (end a sub-tour), `:DocentSave <title>`, `:DocentTours` (picker), `:DocentMcpCommand`. Range highlights use the `DocentRange` group (links to `Visual`).
+
+### Sub-tours
+
+Tours form a tree. Mid-tour you can ask a tangent question ("wait, what does the registry actually store?") and the agent branches: a sub-tour starts at your current stop, and your pacing keys now walk the tangent. Pacing past the last tangent stop pops you right back to the stop you left the main tour from — so tangents never lose your place. Only the deepest branch is active at a time.
+
+- Past-the-end pop: `]t` (or your next key) at the last sub-tour stop returns you to the parent stop.
+- `:DocentBack` ends the sub-tour explicitly and returns to the parent stop.
+- `[t` at stop 1 of a sub-tour stays put — leaving a sub-tour is always past-the-end or explicit.
+- `:DocentRestart` restarts the deepest (active) tour only.
+- `:DocentSave` / `save_tour` saves the active (deepest) tour only — saving a whole tree is out of v1 scope.
 
 ### Keymap conflicts (LazyVim etc.)
 
@@ -57,7 +67,7 @@ Agents are told your real pacing keys: the relay reads what docent actually boun
 
 A good tour is documentation. `save_tour` (or `:DocentSave <title>`) writes it to `.docent/tours/<slug>.json` in your project — file paths are stored relative to the project root, so commit the directory and your whole team (and their agents) gets the tour. Agents are instructed to check `list_saved_tours` before re-deriving a flow, and to load an existing tour instead; `load_tour` / `:DocentTours` brings one back and jumps to stop 1. Saved tours can drift as code changes — lines are approximate, and that's accepted v1 behavior. `clear_tour` only clears the live tour, never saved files.
 
-The agent's tool surface is navigation + narration only — no edits, no shell. Tools: `jump_to`, `highlight`, `narrate`, `add_tour_stop`, `clear_tour`, `list_tour`, `save_tour`, `list_saved_tours`, `load_tour`, `get_editor_context`. When a tour is live, `get_editor_context` also reports which stop you're on — so mid-tour you can ask "what's happening with this code?" and the agent knows exactly where you are.
+The agent's tool surface is navigation + narration only — no edits, no shell. Tools: `jump_to`, `highlight`, `narrate`, `add_tour_stop`, `clear_tour`, `list_tour`, `save_tour`, `list_saved_tours`, `load_tour`, `get_editor_context`.
 
 ## v1 definition of done
 

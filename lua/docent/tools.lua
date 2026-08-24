@@ -72,7 +72,7 @@ function M.add_tour_stop(args)
     line_start = args.line_start,
     line_end = args.line_end,
     narration = args.narration,
-  })
+  }, args.branch == true)
   local result = { index = index, total = total }
   if index == 1 then
     result.pace_with = require("docent").pacing_keys().next or ":DocentNext"
@@ -84,11 +84,11 @@ function M.save_tour(args)
   if type(args.title) ~= "string" or args.title == "" then
     error("missing required argument: title", 0)
   end
-  if #tour.stops == 0 then
+  if tour.stop_count() == 0 then
     error("no active tour to save", 0)
   end
-  local saved = require("docent.store").save(args.title, tour.stops, vim.fn.getcwd())
-  tour.title = args.title
+  local saved = require("docent.store").save(args.title, tour.active_stops(), vim.fn.getcwd())
+  tour.set_title(args.title)
   return saved
 end
 
@@ -119,7 +119,17 @@ function M.load_tour(args)
   }
 end
 
-function M.clear_tour(_)
+function M.clear_tour(args)
+  if args.all ~= true and tour.depth() > 1 then
+    local parent = tour.pop()
+    return {
+      popped_to = {
+        title = parent.title or vim.NIL,
+        current = parent.current,
+        total = #parent.stops,
+      },
+    }
+  end
   tour.clear()
   return vim.empty_dict()
 end
@@ -137,20 +147,6 @@ function M.get_editor_context(_)
     mode = mode,
     cwd = vim.fn.getcwd(),
   }
-  if #tour.stops > 0 then
-    local stop = tour.stops[tour.current]
-    ctx.tour = {
-      title = tour.title or vim.NIL,
-      current = tour.current,
-      total = #tour.stops,
-      stop = stop and {
-        file = stop.file,
-        line_start = stop.line_start,
-        line_end = stop.line_end,
-        narration = stop.narration,
-      } or nil,
-    }
-  end
   if mode:match("^[vV\022]") then
     local anchor = vim.fn.getpos("v")[2]
     local head = vim.fn.getpos(".")[2]

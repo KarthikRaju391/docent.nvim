@@ -2,9 +2,44 @@ local ui = require("docent.ui")
 
 local M = {}
 
-M.stops = {}
-M.current = 0
-M.title = nil
+-- Stack of frames; only the deepest is active (paced, listed, appended to).
+-- frame = { stops, current, title, anchor } — anchor is the parent frame's
+-- stop index this sub-tour branched from (nil for root).
+local frames = {}
+
+local function top()
+  return frames[#frames]
+end
+
+function M.depth()
+  return #frames
+end
+
+function M.active_stops()
+  local f = top()
+  return f and f.stops or {}
+end
+
+function M.stop_count()
+  return #M.active_stops()
+end
+
+function M.current()
+  local f = top()
+  return f and f.current or 0
+end
+
+function M.get_title()
+  local f = top()
+  return f and f.title or nil
+end
+
+function M.set_title(title)
+  local f = top()
+  if f then
+    f.title = title
+  end
+end
 
 -- Shared jump mechanics: open file (reusing a window that already shows it),
 -- move cursor, center, highlight the range, show the narration float.
@@ -31,51 +66,86 @@ function M.navigate(loc)
   return line
 end
 
-function M.add_stop(stop)
-  table.insert(M.stops, stop)
-  if #M.stops == 1 then
-    M.current = 1
+local function push_frame(anchor)
+  table.insert(frames, { stops = {}, current = 0, title = nil, anchor = anchor })
+end
+
+function M.add_stop(stop, branch)
+  if branch and top() and #top().stops > 0 then
+    push_frame(top().current)
+  elseif not top() then
+    push_frame(nil)
+  end
+  local f = top()
+  table.insert(f.stops, stop)
+  if #f.stops == 1 then
+    f.current = 1
     M.navigate(stop)
   end
-  return #M.stops, #M.stops
+  return #f.stops, #f.stops
 end
 
 function M.goto_stop(n)
-  local stop = M.stops[n]
+  local f = top()
+  local stop = f and f.stops[n]
   if not stop then
     vim.notify(("docent: no tour stop %s"):format(n), vim.log.levels.WARN)
     return
   end
-  M.current = n
+  f.current = n
   M.navigate(stop)
 end
 
+-- Pop one frame and return the user to the parent's anchor stop.
+-- Returns the parent frame, or nil if there was no sub-tour to pop.
+function M.pop()
+  if #frames < 2 then
+    return nil
+  end
+  local anchor = top().anchor
+  table.remove(frames)
+  local f = top()
+  f.current = anchor
+  M.navigate(f.stops[anchor])
+  return f
+end
+
 function M.next()
-  if #M.stops == 0 then
+  local f = top()
+  if not f or #f.stops == 0 then
     vim.notify("docent: no active tour", vim.log.levels.INFO)
     return
   end
-  if M.current >= #M.stops then
-    vim.notify(("docent: end of tour (%d/%d)"):format(#M.stops, #M.stops), vim.log.levels.INFO)
+  if f.current < #f.stops then
+    M.goto_stop(f.current + 1)
     return
   end
-  M.goto_stop(M.current + 1)
+  if #frames > 1 then
+    local parent = M.pop()
+    vim.notify(
+      ("docent: end of sub-tour — back to %s (%d/%d)"):format(parent.title or "tour", parent.current, #parent.stops),
+      vim.log.levels.INFO
+    )
+    return
+  end
+  vim.notify(("docent: end of tour (%d/%d)"):format(#f.stops, #f.stops), vim.log.levels.INFO)
 end
 
 function M.prev()
-  if #M.stops == 0 then
+  local f = top()
+  if not f or #f.stops == 0 then
     vim.notify("docent: no active tour", vim.log.levels.INFO)
     return
   end
-  if M.current <= 1 then
-    vim.notify(("docent: start of tour (1/%d)"):format(#M.stops), vim.log.levels.INFO)
+  if f.current <= 1 then
+    vim.notify(("docent: start of tour (1/%d)"):format(#f.stops), vim.log.levels.INFO)
     return
   end
-  M.goto_stop(M.current - 1)
+  M.goto_stop(f.current - 1)
 end
 
 function M.restart()
-  if #M.stops == 0 then
+  if M.stop_count() == 0 then
     vim.notify("docent: no active tour to restart", vim.log.levels.WARN)
     return
   end
@@ -83,33 +153,44 @@ function M.restart()
 end
 
 function M.load_stops(stops, title)
-  M.stops = stops
-  M.current = 0
-  M.title = title
-  if #M.stops > 0 then
+  frames = {}
+  push_frame(nil)
+  top().stops = stops
+  top().title = title
+  if #stops > 0 then
     M.goto_stop(1)
   end
 end
 
 function M.clear()
-  M.stops = {}
-  M.current = 0
-  M.title = nil
+  frames = {}
   ui.clear_highlights()
   ui.close_float()
 end
 
 function M.list()
+  local f = top()
   local stops = {}
-  for i, s in ipairs(M.stops) do
-    stops[i] = {
-      file = s.file,
-      line_start = s.line_start,
-      line_end = s.line_end,
-      narration = s.narration,
+  if f then
+    for i, s in ipairs(f.stops) do
+      stops[i] = {
+        file = s.file,
+        line_start = s.line_start,
+        line_end = s.line_end,
+        narration = s.narration,
+      }
+    end
+  end
+  local result = { stops = stops, current = f and f.current or 0, depth = math.max(#frames, 1) }
+  if #frames > 1 then
+    local parent = frames[#frames - 1]
+    result.parent = {
+      title = parent.title or vim.NIL,
+      anchor = f.anchor,
+      total = #parent.stops,
     }
   end
-  return { stops = stops, current = M.current }
+  return result
 end
 
 return M

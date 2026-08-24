@@ -60,18 +60,25 @@ function M.setup(opts)
   end, { nargs = 1, desc = "Docent: go to tour stop <n>" })
   vim.api.nvim_create_user_command("DocentRestart", function()
     tour.restart()
-  end, { desc = "Docent: jump back to tour stop 1" })
+  end, { desc = "Docent: jump back to stop 1 of the active (sub-)tour" })
+  vim.api.nvim_create_user_command("DocentBack", function()
+    if tour.depth() < 2 then
+      vim.notify("docent: not in a sub-tour", vim.log.levels.WARN)
+      return
+    end
+    tour.pop()
+  end, { desc = "Docent: end the sub-tour and return to the parent stop" })
   vim.api.nvim_create_user_command("DocentSave", function(cmd)
-    if #tour.stops == 0 then
+    if tour.stop_count() == 0 then
       vim.notify("docent: no active tour to save", vim.log.levels.WARN)
       return
     end
-    local ok, res = pcall(require("docent.store").save, cmd.args, tour.stops)
+    local ok, res = pcall(require("docent.store").save, cmd.args, tour.active_stops())
     if not ok then
       vim.notify("docent: " .. tostring(res), vim.log.levels.ERROR)
       return
     end
-    tour.title = cmd.args
+    tour.set_title(cmd.args)
     vim.notify(("docent: saved tour '%s' to %s"):format(cmd.args, res.path), vim.log.levels.INFO)
   end, { nargs = "+", desc = "Docent: save the current tour as <title>" })
   vim.api.nvim_create_user_command("DocentTours", function()

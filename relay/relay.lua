@@ -20,7 +20,8 @@ local function build_instructions(keys)
       .. pacing
       .. "; never re-jump them.",
     "After building a good tour, save_tour it with a short feature-name title so it is there next time.",
-    'Call get_editor_context first when the user says "this" or refers to what they\'re looking at. When the user is on a tour and asks about "this" or the current code, call get_editor_context — it includes their exact tour stop; answer in the context of that stop and narrate/jump onward rather than starting over.',
+    "If the user asks a tangent question mid-tour ('wait, what does X do?'), branch: call add_tour_stop with branch=true for the tangent's stops; when the tangent is done, clear_tour pops them back to where they left the main tour.",
+    'Call get_editor_context first when the user says "this" or refers to what they\'re looking at; during a tour, combine it with list_tour to know which stop they are on.',
     "Never paste code blocks into chat that the user can be shown in their editor; keep chat replies to one short sentence.",
   }, " ")
 end
@@ -85,7 +86,7 @@ local TOOLS = {
   },
   {
     name = "add_tour_stop",
-    description = "Queue one stop of a guided tour: a location plus a 1-2 sentence narration. Use one call per hop, in reading order, when the user asks to be walked through a flow. The first stop of a fresh tour navigates the user there and its result includes pace_with — the key or command the user paces with; quote that, never assume specific keys. After the first stop the user paces themselves — never re-jump them.",
+    description = "Queue one stop of a guided tour: a location plus a 1-2 sentence narration. Use one call per hop, in reading order, when the user asks to be walked through a flow. The first stop of a fresh tour navigates the user there and its result includes pace_with — the key or command the user paces with; quote that, never assume specific keys. After the first stop the user paces themselves — never re-jump them. Pass branch=true on the FIRST stop of a mid-tour tangent: it starts a sub-tour anchored at the user's current stop (further stops append to it; pacing past its end or clear_tour returns them to the anchor).",
     inputSchema = {
       type = "object",
       properties = {
@@ -93,22 +94,25 @@ local TOOLS = {
         line_start = { type = "integer", description = "First line of the stop (1-based)" },
         line_end = { type = "integer", description = "If given, highlight line_start..line_end at the stop" },
         narration = { type = "string", description = "1-2 sentence explanation of this stop" },
+        branch = { type = "boolean", description = "Start a sub-tour anchored at the user's current stop; this stop becomes its stop 1. No-op semantics without a live tour (starts a normal tour)." },
       },
       required = { "file", "line_start", "narration" },
     },
   },
   {
     name = "clear_tour",
-    description = "Clear the current tour: removes all stops, highlights, and the narration float. Call before queueing a new tour on a different topic.",
+    description = "End the active tour level. With a sub-tour active, pops ONE level and returns the user to the parent stop they branched from (result: popped_to). At the root (or with all=true) it clears everything: stops, highlights, narration float. Saved tours are never deleted.",
     inputSchema = {
       type = "object",
-      properties = vim.empty_dict(),
+      properties = {
+        all = { type = "boolean", description = "Clear the whole tour tree, not just the active sub-tour" },
+      },
       required = {},
     },
   },
   {
     name = "list_tour",
-    description = "List the current tour's stops and which one the user is on. Use to check state before appending stops or to see how far the user has paced.",
+    description = "List the active tour level's stops and which one the user is on, plus depth (1 = root) and, when in a sub-tour, parent = { title, anchor, total }. Use to check state before appending stops or to see how far the user has paced.",
     inputSchema = {
       type = "object",
       properties = vim.empty_dict(),
@@ -117,7 +121,7 @@ local TOOLS = {
   },
   {
     name = "save_tour",
-    description = "Persist the current tour to <project>/.docent/tours/<slug>.json (committable, so teammates and other agents find it). Call after building a good tour, with a short feature-name title. Errors if the tour is empty.",
+    description = "Persist the active tour level to <project>/.docent/tours/<slug>.json (committable, so teammates and other agents find it). Saves only the active (deepest) level — a live sub-tour saves the sub-tour, not the whole tree. Call after building a good tour, with a short feature-name title. Errors if the tour is empty.",
     inputSchema = {
       type = "object",
       properties = {
@@ -148,7 +152,7 @@ local TOOLS = {
   },
   {
     name = "get_editor_context",
-    description = "Read what the user is looking at: current file, cursor position, mode, visual selection (if any), and the instance cwd. If a tour is live, also includes tour = { title, current, total, stop } for the stop the user is at — the cursor may have wandered from the stop, so both are reported; both are signal. Call this first whenever the user says 'this' or otherwise refers to what's on their screen, and answer tour questions in the context of the reported stop.",
+    description = "Read what the user is looking at: current file, cursor position, mode, visual selection (if any), and the instance cwd. Call this first whenever the user says 'this' or otherwise refers to what's on their screen; during a tour, combine with list_tour to know which stop they are on.",
     inputSchema = {
       type = "object",
       properties = vim.empty_dict(),

@@ -32,6 +32,10 @@ _Avoid_: walkthrough, session
 One location in a Tour plus its Narration.
 _Avoid_: step, waypoint, bookmark
 
+**Sub-tour**:
+A Tour branched from a Stop of a parent Tour to explore a tangent; ending it returns the user to that parent Stop. Tours therefore form a tree, but only the deepest branch is active at a time.
+_Avoid_: detour, side tour, nested tour
+
 **Narration**:
 The Agent's 1–2 sentence explanation attached to a Stop or Jump, shown in a float at the target range and optionally spoken via TTS.
 _Avoid_: comment, annotation, message
@@ -46,6 +50,7 @@ _Avoid_: state, environment
 - A **Tour** contains one or more **Stops**, each carrying one **Narration**.
 - A **Jump** carries an optional **Narration** but never belongs to a **Tour**.
 - The **Agent** advances nothing in a **Tour** after the first Stop — the user paces with keymaps (`]t` / `[t`) while the Agent may keep queueing Stops ahead.
+- A **Sub-tour** is anchored to exactly one parent **Stop**; pacing past its end (or an explicit back command) pops to the parent Tour at that Stop.
 
 ## Tool surface (the whole contract)
 
@@ -59,6 +64,8 @@ Navigation + narration only — no edits, no shell, no buffer writes. Agents use
 - `get_editor_context()` — Editor Context readback
 
 The "navigate, don't paste" behavior ships inside the protocol: MCP server `instructions` on initialize plus rich per-tool descriptions. No per-agent prompt files are maintained.
+
+The tool count grows reluctantly: new capabilities extend the semantics of existing tools (flags, richer results) rather than adding tools, and anything the Agent can already do natively (e.g. tracking which Stop the user is on via `list_tour`) is not duplicated into the surface.
 
 ## Example dialogue
 
