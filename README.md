@@ -41,6 +41,8 @@ Keep Neovim open with `setup()` called, then ask your agent things like:
 - "Where do we dedupe pre-meeting deliveries?" → the agent calls `jump_to`; your cursor lands there with a narration float.
 - "Walk me through the import flow" → the agent queues tour stops; you pace through them with `]t` / `[t` (or `:DocentNext` / `:DocentPrev` / `:DocentStop <n>`).
 
+While a tour is live, `<Esc>` (normal mode) ends the whole tour — the mapping exists only during a tour, chains to whatever your `<Esc>` did before (e.g. clearing search highlights), and is restored afterwards. Disable with `opts = { esc_ends_tour = false }`.
+
 Commands: `:DocentNext`, `:DocentPrev`, `:DocentStop <n>`, `:DocentRestart` (back to stop 1 of the active tour), `:DocentBack` (end a sub-tour), `:DocentEnd` (exit the whole tour), `:DocentNarration` (re-show the current stop's narration float), `:DocentSave <title>`, `:DocentTours` (picker), `:DocentMcpCommand`. Range highlights use the `DocentRange` group (links to `Visual`).
 
 ### Sub-tours

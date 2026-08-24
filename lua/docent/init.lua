@@ -42,6 +42,7 @@ function M.setup(opts)
 
   require("docent.registry").setup()
   require("docent.ui").setup_hl()
+  require("docent.esc").set_enabled(opts.esc_ends_tour ~= false)
   local tour = require("docent.tour")
 
   vim.api.nvim_create_user_command("DocentNext", function()

@@ -75,6 +75,7 @@ function M.add_stop(stop, branch)
     push_frame(top().current)
   elseif not top() then
     push_frame(nil)
+    require("docent.esc").install()
   end
   local f = top()
   table.insert(f.stops, stop)
@@ -158,12 +159,14 @@ function M.load_stops(stops, title)
   top().stops = stops
   top().title = title
   if #stops > 0 then
+    require("docent.esc").install()
     M.goto_stop(1)
   end
 end
 
 function M.clear()
   frames = {}
+  require("docent.esc").remove()
   ui.clear_highlights()
   ui.close_float()
 end
