@@ -24,7 +24,7 @@ function M.jump_to(args)
     file = path,
     line_start = args.line_start,
     line_end = args.line_end,
-    narration = args.narration,
+    info = args.info,
   })
   return { file = path, line = line }
 end
@@ -51,7 +51,7 @@ function M.highlight(args)
   return { count = #ranges }
 end
 
-function M.narrate(args)
+function M.show_info(args)
   if type(args.text) ~= "string" or args.text == "" then
     error("missing required argument: text", 0)
   end
@@ -64,14 +64,14 @@ function M.add_tour_stop(args)
   if type(args.line_start) ~= "number" then
     error("missing required argument: line_start", 0)
   end
-  if type(args.narration) ~= "string" or args.narration == "" then
-    error("missing required argument: narration", 0)
+  if type(args.info) ~= "string" or args.info == "" then
+    error("missing required argument: info", 0)
   end
   local index, total = tour.add_stop({
     file = path,
     line_start = args.line_start,
     line_end = args.line_end,
-    narration = args.narration,
+    info = args.info,
   }, args.branch == true)
   local result = { index = index, total = total }
   if index == 1 then
@@ -108,7 +108,7 @@ function M.load_tour(args)
     if not vim.startswith(file, "/") then
       file = cwd .. "/" .. file
     end
-    abs[i] = { file = file, line_start = s.line_start, line_end = s.line_end, narration = s.narration }
+    abs[i] = { file = file, line_start = s.line_start, line_end = s.line_end, info = s.info }
   end
   tour.load_stops(abs, data.title)
   return {

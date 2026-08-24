@@ -32,7 +32,7 @@ function M.save(title, stops, cwd)
       file = relative(s.file, cwd),
       line_start = s.line_start,
       line_end = s.line_end,
-      narration = s.narration,
+      info = s.info,
     }
   end
   local data = { title = title, slug = slug, created_at = os.time(), stops = rel_stops }
@@ -92,6 +92,16 @@ function M.load(slug, cwd)
   f:close()
   if not ok or type(data) ~= "table" or type(data.stops) ~= "table" then
     error("invalid tour file: " .. path, 0)
+  end
+  for _, s in ipairs(data.stops) do
+    if type(s.info) ~= "string" then
+      error(
+        ("tour file %s has a stop without an 'info' field — it predates the rename of stop text to 'info'; re-save the tour"):format(
+          path
+        ),
+        0
+      )
+    end
   end
   return data
 end

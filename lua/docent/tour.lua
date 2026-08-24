@@ -42,7 +42,7 @@ function M.set_title(title)
 end
 
 -- Shared jump mechanics: open file (reusing a window that already shows it),
--- move cursor, center, highlight the range, show the narration float.
+-- move cursor, center, highlight the range, show the info float.
 function M.navigate(loc)
   ui.clear_highlights()
   ui.close_float()
@@ -60,8 +60,8 @@ function M.navigate(loc)
   if loc.line_end then
     ui.add_highlight(vim.api.nvim_get_current_buf(), line, loc.line_end)
   end
-  if loc.narration and loc.narration ~= "" then
-    ui.show_float(loc.narration)
+  if loc.info and loc.info ~= "" then
+    ui.show_float(loc.info)
   end
   return line
 end
@@ -180,7 +180,7 @@ function M.list()
         file = s.file,
         line_start = s.line_start,
         line_end = s.line_end,
-        narration = s.narration,
+        info = s.info,
       }
     end
   end

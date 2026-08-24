@@ -69,15 +69,15 @@ function M.setup(opts)
     end
     tour.pop()
   end, { desc = "Docent: end the sub-tour and return to the parent stop" })
-  vim.api.nvim_create_user_command("DocentNarration", function()
+  vim.api.nvim_create_user_command("DocentInfo", function()
     local stops = tour.active_stops()
     local stop = stops[tour.current()]
-    if not stop or not stop.narration then
-      vim.notify("docent: no narration to show", vim.log.levels.WARN)
+    if not stop or not stop.info then
+      vim.notify("docent: no info to show", vim.log.levels.WARN)
       return
     end
-    require("docent.ui").show_float(stop.narration)
-  end, { desc = "Docent: re-show the current stop's narration float" })
+    require("docent.ui").show_float(stop.info)
+  end, { desc = "Docent: re-show the current stop's info float" })
   vim.api.nvim_create_user_command("DocentEnd", function()
     if tour.stop_count() == 0 and tour.depth() < 2 then
       vim.notify("docent: no active tour", vim.log.levels.WARN)

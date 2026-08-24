@@ -32,7 +32,7 @@ UTIL = os.path.join(FIXTURE, "lib", "util.lua")
 READMEMD = os.path.join(FIXTURE, "README.md")
 
 EXPECTED_TOOLS = {
-    "jump_to", "highlight", "narrate", "add_tour_stop",
+    "jump_to", "highlight", "show_info", "add_tour_stop",
     "clear_tour", "list_tour", "get_editor_context",
     "save_tour", "list_saved_tours", "load_tour",
 }
@@ -153,6 +153,15 @@ class Editor:
 
     def send_keys(self, keys):
         self._client(["--remote-send", keys])
+
+    def cmd(self, command):
+        """Run an ex command via RPC.
+
+        Never drive commands with remote-send '<Esc>:Cmd<CR>': while a tour
+        is live docent maps <Esc>, and two such sends within 1s register as a
+        real double-Esc, ending the whole tour.
+        """
+        self.expr('execute("%s")' % command)
 
     def current(self):
         """(absolute file path, cursor line) of the editor right now."""
@@ -459,6 +468,9 @@ def case_handshake(ctx):
         schema = t.get("inputSchema") or {}
         check(schema.get("type") == "object",
               "tool %s inputSchema.type != 'object'" % t.get("name"), actual=schema)
+        check("narration" not in json.dumps(schema),
+              "tool %s schema still mentions 'narration' (renamed to 'info')"
+              % t.get("name"), actual=schema)
 
     resp = relay.request("bogus/method", {}, rid=99)
     err = resp.get("error") or {}
@@ -478,8 +490,8 @@ def case_jump(ctx):
     ed.wait_position(APP, 5, "jump_to did not land on app.lua:5")
 
     relay.tool_text("jump_to", {"file": UTIL, "line_start": 3,
-                                "narration": "util.add lives here"})
-    ed.wait_position(UTIL, 3, "jump_to with narration did not land on util.lua:3")
+                                "info": "util.add lives here"})
+    ed.wait_position(UTIL, 3, "jump_to with info did not land on util.lua:3")
 
     before = ed.current()
     is_error, text = relay.call_tool(
@@ -504,15 +516,15 @@ def case_tour(ctx):
 
     relay.tool_text("add_tour_stop",
                     {"file": stops[0][0], "line_start": stops[0][1],
-                     "narration": "stop one: module table"})
+                     "info": "stop one: module table"})
     ed.wait_position(*stops[0], what="first tour stop did not auto-jump")
 
     relay.tool_text("add_tour_stop",
                     {"file": stops[1][0], "line_start": stops[1][1],
-                     "narration": "stop two: the return"})
+                     "info": "stop two: the return"})
     relay.tool_text("add_tour_stop",
                     {"file": stops[2][0], "line_start": stops[2][1],
-                     "narration": "stop three: docs"})
+                     "info": "stop three: docs"})
     ed.assert_position(*stops[0],
                        what="queueing stops 2/3 moved the cursor (only stop 1 may auto-jump)")
 
@@ -559,14 +571,14 @@ def case_context(ctx):
     relay.assert_all_json()
 
 
-def case_narrate_highlight(ctx):
+def case_info_highlight(ctx):
     ed = ctx.editor()
     relay = ctx.relay()
     relay.handshake()
 
     ed.set_position(APP, 6)
 
-    relay.tool_text("narrate", {"text": "This is a free-floating narration."})
+    relay.tool_text("show_info", {"text": "This is free-floating info."})
 
     is_error, text = relay.call_tool(
         "highlight",
@@ -660,7 +672,7 @@ def case_pacing_keys(ctx):
     # First stop of a tour returns a pace_with hint with the real key.
     result = relay.call_raw("add_tour_stop",
                             {"file": APP, "line_start": 3,
-                             "narration": "first stop"})
+                             "info": "first stop"})
     check(not result.get("isError"), "add_tour_stop failed", actual=result)
     dump = json.dumps(result)
     check("pace_with" in dump,
@@ -687,7 +699,7 @@ def case_persistent_tours(ctx):
                  (READMEMD, 2, "docs")]
         for f, l, n in stops:
             relay.tool_text("add_tour_stop",
-                            {"file": f, "line_start": l, "narration": n})
+                            {"file": f, "line_start": l, "info": n})
         ed.wait_position(APP, 3, "first tour stop did not auto-jump")
 
         relay.tool_text("save_tour", {"title": "Import Flow"})
@@ -718,8 +730,11 @@ def case_persistent_tours(ctx):
                   % i, actual=f)
             check(isinstance(stop.get("line_start"), int),
                   "stop %d missing line_start" % i, actual=stop)
-            check(isinstance(stop.get("narration"), str) and stop["narration"],
-                  "stop %d missing narration" % i, actual=stop)
+            check(isinstance(stop.get("info"), str) and stop["info"],
+                  "stop %d missing info" % i, actual=stop)
+            check("narration" not in stop,
+                  "stop %d still has a 'narration' key (renamed to 'info')"
+                  % i, actual=stop)
 
         result = relay.call_raw("list_saved_tours", {})
         check(not result.get("isError"), "list_saved_tours failed", actual=result)
@@ -765,24 +780,25 @@ def case_user_commands(ctx):
         relay = ctx.relay()
         relay.handshake()
 
-        for cmd in ("DocentRestart", "DocentSave", "DocentTours"):
+        for cmd in ("DocentRestart", "DocentSave", "DocentTours",
+                    "DocentInfo", "DocentEnd"):
             got = ed.expr("exists(':%s')" % cmd)
             check(got == "2", "user command :%s does not exist" % cmd,
                   expected="2 (full command match)", actual=got)
 
         relay.tool_text("add_tour_stop", {"file": APP, "line_start": 3,
-                                          "narration": "stop one"})
+                                          "info": "stop one"})
         relay.tool_text("add_tour_stop", {"file": UTIL, "line_start": 5,
-                                          "narration": "stop two"})
+                                          "info": "stop two"})
         ed.wait_position(APP, 3, "first tour stop did not auto-jump")
 
         ed.send_keys(NEXT_KEY)
         ed.wait_position(UTIL, 5, "%s did not advance to stop 2" % NEXT_KEY)
 
-        ed.send_keys("<Esc>:DocentRestart<CR>")
+        ed.cmd("DocentRestart")
         ed.wait_position(APP, 3, ":DocentRestart did not return to stop 1")
 
-        ed.send_keys("<Esc>:DocentSave Cmd Flow<CR>")
+        ed.cmd("DocentSave Cmd Flow")
         tours_dir = os.path.join(DOCENT_DIR, "tours")
         wait_for(lambda: os.path.isdir(tours_dir) and os.listdir(tours_dir),
                  3.0, ":DocentSave did not create a tour file under %s"
@@ -815,7 +831,7 @@ def case_subtour_branching(ctx):
     for i, (f, l) in enumerate(root):
         relay.tool_text("add_tour_stop",
                         {"file": f, "line_start": l,
-                         "narration": "root stop %d" % (i + 1)})
+                         "info": "root stop %d" % (i + 1)})
     ed.wait_position(*root[0], what="root stop 1 did not auto-jump")
 
     ed.send_keys(NEXT_KEY)
@@ -825,7 +841,7 @@ def case_subtour_branching(ctx):
     # Branch from root stop 2: the branch call auto-navigates to sub stop 1.
     relay.tool_text("add_tour_stop",
                     {"file": APP, "line_start": 6, "branch": True,
-                     "narration": "sub stop 1"})
+                     "info": "sub stop 1"})
     ed.wait_position(APP, 6,
                      "add_tour_stop{branch:true} did not auto-jump to the "
                      "sub-tour's stop 1")
@@ -838,7 +854,7 @@ def case_subtour_branching(ctx):
 
     relay.tool_text("add_tour_stop",
                     {"file": READMEMD, "line_start": 5,
-                     "narration": "sub stop 2"})
+                     "info": "sub stop 2"})
     ed.assert_position(APP, 6, what="second sub stop moved the cursor")
 
     text = relay.tool_text("list_tour", {})
@@ -882,7 +898,7 @@ def case_subtour_branching(ctx):
     # Branch again; clear_tour {} pops one level rather than nuking the tree.
     relay.tool_text("add_tour_stop",
                     {"file": APP, "line_start": 9, "branch": True,
-                     "narration": "second branch stop 1"})
+                     "info": "second branch stop 1"})
     ed.wait_position(APP, 9, "second branch did not auto-jump")
 
     text = relay.tool_text("clear_tour", {})
@@ -913,13 +929,13 @@ def case_subtour_clear_all(ctx):
     relay.handshake()
 
     relay.tool_text("add_tour_stop", {"file": APP, "line_start": 3,
-                                      "narration": "root stop 1"})
+                                      "info": "root stop 1"})
     relay.tool_text("add_tour_stop", {"file": UTIL, "line_start": 5,
-                                      "narration": "root stop 2"})
+                                      "info": "root stop 2"})
     ed.wait_position(APP, 3, "root stop 1 did not auto-jump")
     relay.tool_text("add_tour_stop", {"file": READMEMD, "line_start": 2,
                                       "branch": True,
-                                      "narration": "sub stop 1"})
+                                      "info": "sub stop 1"})
     ed.wait_position(READMEMD, 2, "branch did not auto-jump")
 
     relay.tool_text("clear_tour", {"all": True})
@@ -942,27 +958,27 @@ def case_subtour_docent_back(ctx):
           expected="2 (full command match)", actual=got)
 
     relay.tool_text("add_tour_stop", {"file": APP, "line_start": 3,
-                                      "narration": "root stop 1"})
+                                      "info": "root stop 1"})
     relay.tool_text("add_tour_stop", {"file": UTIL, "line_start": 5,
-                                      "narration": "root stop 2"})
+                                      "info": "root stop 2"})
     ed.wait_position(APP, 3, "root stop 1 did not auto-jump")
     ed.send_keys(NEXT_KEY)
     ed.wait_position(UTIL, 5, "%s did not advance to root stop 2" % NEXT_KEY)
 
     relay.tool_text("add_tour_stop", {"file": APP, "line_start": 6,
                                       "branch": True,
-                                      "narration": "sub stop 1"})
+                                      "info": "sub stop 1"})
     ed.wait_position(APP, 6, "branch did not auto-jump")
 
-    ed.send_keys("<Esc>:DocentBack<CR>")
+    ed.cmd("DocentBack")
     ed.wait_position(UTIL, 5, ":DocentBack did not pop back to the anchor")
     text = relay.tool_text("list_tour", {})
     check(_field_is(text, "depth", 1),
           "after :DocentBack, list_tour depth != 1", actual=text[:600])
 
-    # At the root, :DocentBack must not error the instance.
-    ed.send_keys("<Esc>:DocentBack<CR>")
-    time.sleep(0.5)
+    # At the root, :DocentBack must not error the instance (ed.cmd raises if
+    # the command throws).
+    ed.cmd("DocentBack")
     check(ed.expr("1+1") == "2",
           ":DocentBack at root broke the instance (RPC unresponsive)")
     ed.assert_position(UTIL, 5, ":DocentBack at root moved the cursor",
@@ -970,8 +986,7 @@ def case_subtour_docent_back(ctx):
 
     # With no tour at all, it must also stay quiet.
     relay.tool_text("clear_tour", {"all": True})
-    ed.send_keys("<Esc>:DocentBack<CR>")
-    time.sleep(0.5)
+    ed.cmd("DocentBack")
     check(ed.expr("1+1") == "2",
           ":DocentBack with no tour broke the instance (RPC unresponsive)")
 
@@ -987,7 +1002,7 @@ def case_subtour_save(ctx):
 
         for f, l in ((APP, 3), (UTIL, 5), (READMEMD, 2)):
             relay.tool_text("add_tour_stop",
-                            {"file": f, "line_start": l, "narration": "root"})
+                            {"file": f, "line_start": l, "info": "root"})
         ed.wait_position(APP, 3, "root stop 1 did not auto-jump")
         ed.send_keys(NEXT_KEY)
         ed.wait_position(UTIL, 5,
@@ -995,10 +1010,10 @@ def case_subtour_save(ctx):
 
         relay.tool_text("add_tour_stop", {"file": APP, "line_start": 6,
                                           "branch": True,
-                                          "narration": "sub stop 1"})
+                                          "info": "sub stop 1"})
         ed.wait_position(APP, 6, "branch did not auto-jump")
         relay.tool_text("add_tour_stop", {"file": READMEMD, "line_start": 5,
-                                          "narration": "sub stop 2"})
+                                          "info": "sub stop 2"})
 
         relay.tool_text("save_tour", {"title": "Sub Flow"})
         tour_path = os.path.join(DOCENT_DIR, "tours", "sub-flow.json")
@@ -1014,10 +1029,86 @@ def case_subtour_save(ctx):
         check(files == {"app.lua", "README.md"},
               "nested save_tour saved the wrong stops",
               expected={"app.lua", "README.md"}, actual=files)
+        for i, stop in enumerate(stops):
+            check(isinstance(stop.get("info"), str) and stop["info"],
+                  "saved sub stop %d missing info" % i, actual=stop)
+            check("narration" not in stop,
+                  "saved sub stop %d still has a 'narration' key "
+                  "(renamed to 'info')" % i, actual=stop)
 
         relay.assert_all_json()
     finally:
         clean_docent()
+
+
+def case_esc_ends_tour(ctx):
+    ed = ctx.editor()
+    relay = ctx.relay()
+    relay.handshake()
+
+    # No tour yet: <Esc> must have no docent mapping.
+    check(ed.expr("!empty(maparg('<Esc>', 'n', 0, 1))") == "0",
+          "<Esc> is mapped in normal mode before any tour exists")
+
+    stops = [(APP, 3), (UTIL, 5), (READMEMD, 2)]
+    for i, (f, l) in enumerate(stops):
+        relay.tool_text("add_tour_stop",
+                        {"file": f, "line_start": l,
+                         "info": "stop %d" % (i + 1)})
+    ed.wait_position(*stops[0], what="stop 1 did not auto-jump")
+    ed.send_keys(NEXT_KEY)
+    ed.wait_position(*stops[1], what="%s did not advance to stop 2" % NEXT_KEY)
+
+    check(ed.expr("!empty(maparg('<Esc>', 'n', 0, 1))") == "1",
+          "no transient <Esc> mapping exists while the tour is live")
+
+    # A single <Esc> does not end the tour.
+    ed.send_keys("<Esc>")
+    time.sleep(1.2)  # let the single press expire the 1000ms double window
+    text = relay.tool_text("list_tour", {})
+    for f, _ in stops:
+        check(os.path.basename(f) in text,
+              "a single <Esc> ended the tour", actual=text[:600])
+    check(_field_is(text, "current", 2),
+          "a single <Esc> changed the current stop", actual=text[:600])
+
+    # Two <Esc> within 1s (one send) end the whole tour.
+    ed.send_keys("<Esc><Esc>")
+    wait_for(lambda: "util.lua" not in relay.tool_text("list_tour", {}),
+             3.0, "double-<Esc> did not end the tour")
+    text = relay.tool_text("list_tour", {})
+    for f, _ in stops:
+        check(os.path.basename(f) not in text,
+              "double-<Esc> left stops behind", actual=text[:600])
+    check(not _field_is(text, "depth", 2),
+          "after double-<Esc>, list_tour still reports a nested depth",
+          actual=text[:600])
+
+    # After the tour ends, the transient mapping is gone.
+    wait_for(lambda: ed.expr("!empty(maparg('<Esc>', 'n', 0, 1))") == "0",
+             3.0, "the transient <Esc> mapping was not removed when the tour "
+             "ended")
+
+    # Branch state: double-<Esc> from inside a sub-tour clears the WHOLE tree.
+    for i, (f, l) in enumerate(stops[:2]):
+        relay.tool_text("add_tour_stop",
+                        {"file": f, "line_start": l,
+                         "info": "root stop %d" % (i + 1)})
+    ed.wait_position(*stops[0], what="root stop 1 did not auto-jump (round 2)")
+    relay.tool_text("add_tour_stop", {"file": READMEMD, "line_start": 5,
+                                      "branch": True, "info": "sub stop 1"})
+    ed.wait_position(READMEMD, 5, "branch did not auto-jump")
+
+    ed.send_keys("<Esc><Esc>")
+    wait_for(lambda: "app.lua" not in relay.tool_text("list_tour", {}),
+             3.0, "double-<Esc> from a sub-tour did not clear the tree")
+    text = relay.tool_text("list_tour", {})
+    for f in (APP, UTIL, READMEMD):
+        check(os.path.basename(f) not in text,
+              "double-<Esc> from a sub-tour left part of the tree",
+              actual=text[:600])
+
+    relay.assert_all_json()
 
 
 CASES = [
@@ -1026,7 +1117,7 @@ CASES = [
     ("jump", case_jump),
     ("tour", case_tour),
     ("context", case_context),
-    ("narrate_highlight", case_narrate_highlight),
+    ("info_highlight", case_info_highlight),
     ("discovery_two_instances", case_discovery),
     ("discovery_empty_registry", case_empty_registry),
     ("pacing_keys", case_pacing_keys),
@@ -1036,6 +1127,7 @@ CASES = [
     ("subtour_clear_all", case_subtour_clear_all),
     ("subtour_docent_back", case_subtour_docent_back),
     ("subtour_save", case_subtour_save),
+    ("esc_ends_tour", case_esc_ends_tour),
 ]
 
 

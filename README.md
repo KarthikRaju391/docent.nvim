@@ -1,6 +1,6 @@
 # docent.nvim
 
-Let any coding agent guide you through a codebase by navigating your Neovim — jumping, highlighting, narrating — instead of pasting code into chat. You talk (OS-level dictation into the agent's terminal); the agent moves your editor.
+Let any coding agent guide you through a codebase by navigating your Neovim — jumping, highlighting, explaining in place — instead of pasting code into chat. You talk (OS-level dictation into the agent's terminal); the agent moves your editor.
 
 Docent is an MCP server: Claude Code, Pi, Gemini CLI, or any MCP-capable agent connects via a stdio relay (`nvim --headless -l relay.lua`) that finds your Neovim through an instance registry. See `CONTEXT.md` for the domain language and `docs/adr/` for the decisions.
 
@@ -38,12 +38,14 @@ Run the agent from inside (a subdirectory of) the directory where Neovim is runn
 
 Keep Neovim open with `setup()` called, then ask your agent things like:
 
-- "Where do we dedupe pre-meeting deliveries?" → the agent calls `jump_to`; your cursor lands there with a narration float.
+- "Where do we dedupe pre-meeting deliveries?" → the agent calls `jump_to`; your cursor lands there with an info float.
 - "Walk me through the import flow" → the agent queues tour stops; you pace through them with `]t` / `[t` (or `:DocentNext` / `:DocentPrev` / `:DocentStop <n>`).
 
-While a tour is live, `<Esc>` (normal mode) ends the whole tour — the mapping exists only during a tour, chains to whatever your `<Esc>` did before (e.g. clearing search highlights), and is restored afterwards. Disable with `opts = { esc_ends_tour = false }`.
+Talking to your agent by voice? Voice-mode agents read each stop's info aloud as they navigate — the float and the spoken reply are the same text.
 
-Commands: `:DocentNext`, `:DocentPrev`, `:DocentStop <n>`, `:DocentRestart` (back to stop 1 of the active tour), `:DocentBack` (end a sub-tour), `:DocentEnd` (exit the whole tour), `:DocentNarration` (re-show the current stop's narration float), `:DocentSave <title>`, `:DocentTours` (picker), `:DocentMcpCommand`. Range highlights use the `DocentRange` group (links to `Visual`).
+While a tour is live, pressing `<Esc>` twice within a second (normal mode) ends the whole tour. A single `<Esc>` behaves exactly as before — the transient mapping chains to whatever your `<Esc>` did (e.g. clearing search highlights) and is removed when the tour ends. Disable with `opts = { esc_ends_tour = false }`.
+
+Commands: `:DocentNext`, `:DocentPrev`, `:DocentStop <n>`, `:DocentRestart` (back to stop 1 of the active tour), `:DocentBack` (end a sub-tour), `:DocentEnd` (exit the whole tour), `:DocentInfo` (re-show the current stop's info float), `:DocentSave <title>`, `:DocentTours` (picker), `:DocentMcpCommand`. Range highlights use the `DocentRange` group (links to `Visual`).
 
 ### Sub-tours
 
@@ -69,13 +71,13 @@ Agents are told your real pacing keys: the relay reads what docent actually boun
 
 A good tour is documentation. `save_tour` (or `:DocentSave <title>`) writes it to `.docent/tours/<slug>.json` in your project — file paths are stored relative to the project root, so commit the directory and your whole team (and their agents) gets the tour. Agents are instructed to check `list_saved_tours` before re-deriving a flow, and to load an existing tour instead; `load_tour` / `:DocentTours` brings one back and jumps to stop 1. Saved tours can drift as code changes — lines are approximate, and that's accepted v1 behavior. `clear_tour` only clears the live tour, never saved files.
 
-The agent's tool surface is navigation + narration only — no edits, no shell. Tools: `jump_to`, `highlight`, `narrate`, `add_tour_stop`, `clear_tour`, `list_tour`, `save_tour`, `list_saved_tours`, `load_tour`, `get_editor_context`.
+The agent's tool surface is navigation + info only — no edits, no shell. Tools: `jump_to`, `highlight`, `show_info`, `add_tour_stop`, `clear_tour`, `list_tour`, `save_tour`, `list_saved_tours`, `load_tour`, `get_editor_context`.
 
 ## v1 definition of done
 
 In a real repo, both intents work end-to-end against **two different agents** (Claude Code + one other):
 
-1. **Jump** — "where is X handled?" → cursor lands there with a narration float.
+1. **Jump** — "where is X handled?" → cursor lands there with an info float.
 2. **Tour** — "walk me through flow Y" → agent queues stops; user paces with `]t` / `[t`.
 
-Out of v1 scope: TTS narration, tour sidebar, voice capture of any kind, editor state beyond file/cursor/selection.
+Out of v1 scope: TTS of stop info, tour sidebar, voice capture of any kind, editor state beyond file/cursor/selection.

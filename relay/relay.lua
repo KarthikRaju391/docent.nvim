@@ -14,14 +14,15 @@ local function build_instructions(keys)
   end
   return table.concat({
     "You are connected to the user's Neovim as a docent: answer codebase questions by navigating their editor, not by pasting code into chat.",
-    'For single-answer "where is X" questions call jump_to with a 1-2 sentence narration.',
+    'For single-answer "where is X" questions call jump_to with a 1-2 sentence info.',
     'For "walk me through / explain this flow" questions, first call list_saved_tours — a saved tour IS the documented code path for its feature; if one covers the flow, load_tour it instead of re-deriving the path.',
-    "Otherwise queue one add_tour_stop per hop in reading order with a 1-2 sentence narration each — the user paces through stops themselves "
+    "Otherwise queue one add_tour_stop per hop in reading order with a 1-2 sentence info each — the user paces through stops themselves "
       .. pacing
       .. "; never re-jump them.",
     "After building a good tour, save_tour it with a short feature-name title so it is there next time.",
     "If the user asks a tangent question mid-tour ('wait, what does X do?'), branch: call add_tour_stop with branch=true for the tangent's stops; when the tangent is done, clear_tour pops them back to where they left the main tour.",
     'Call get_editor_context first when the user says "this" or refers to what they\'re looking at; during a tour, combine it with list_tour to know which stop they are on.',
+    "When the conversation with the user is happening by voice, read each stop's info aloud as your reply while navigating — the float and the spoken info are the same text; still never paste code.",
     "Never paste code blocks into chat that the user can be shown in their editor; keep chat replies to one short sentence.",
   }, " ")
 end
@@ -38,14 +39,14 @@ end
 local TOOLS = {
   {
     name = "jump_to",
-    description = "Jump the user's editor to one location: opens the file, moves the cursor, centers it, optionally highlights a range and shows a short narration float. Use for single-answer 'where is X' questions instead of pasting code into chat. Not for multi-step explanations — queue add_tour_stop for those.",
+    description = "Jump the user's editor to one location: opens the file, moves the cursor, centers it, optionally highlights a range and shows a short info float. Use for single-answer 'where is X' questions instead of pasting code into chat. Not for multi-step explanations — queue add_tour_stop for those.",
     inputSchema = {
       type = "object",
       properties = {
         file = { type = "string", description = "File path, relative to the Neovim instance's cwd or absolute" },
         line_start = { type = "integer", description = "Line to land on (1-based, default 1)" },
         line_end = { type = "integer", description = "If given, highlight line_start..line_end" },
-        narration = { type = "string", description = "1-2 sentence explanation shown in a float at the target" },
+        info = { type = "string", description = "1-2 sentence explanation shown in a float at the target" },
       },
       required = { "file" },
     },
@@ -74,34 +75,34 @@ local TOOLS = {
     },
   },
   {
-    name = "narrate",
-    description = "Show a short narration float at the user's cursor, not tied to a jump. Use for a 1-2 sentence remark about what they're already looking at. Keep it brief — this is a tooltip, not a chat message.",
+    name = "show_info",
+    description = "Show a short info float at the user's cursor, not tied to a jump. Use for a 1-2 sentence remark about what they're already looking at. Keep it brief — this is a tooltip, not a chat message.",
     inputSchema = {
       type = "object",
       properties = {
-        text = { type = "string", description = "1-2 sentence narration" },
+        text = { type = "string", description = "1-2 sentence info" },
       },
       required = { "text" },
     },
   },
   {
     name = "add_tour_stop",
-    description = "Queue one stop of a guided tour: a location plus a 1-2 sentence narration. Use one call per hop, in reading order, when the user asks to be walked through a flow. The first stop of a fresh tour navigates the user there and its result includes pace_with — the key or command the user paces with; quote that, never assume specific keys. After the first stop the user paces themselves — never re-jump them. Pass branch=true on the FIRST stop of a mid-tour tangent: it starts a sub-tour anchored at the user's current stop (further stops append to it; pacing past its end or clear_tour returns them to the anchor).",
+    description = "Queue one stop of a guided tour: a location plus a 1-2 sentence info. Use one call per hop, in reading order, when the user asks to be walked through a flow. The first stop of a fresh tour navigates the user there and its result includes pace_with — the key or command the user paces with; quote that, never assume specific keys. After the first stop the user paces themselves — never re-jump them. Pass branch=true on the FIRST stop of a mid-tour tangent: it starts a sub-tour anchored at the user's current stop (further stops append to it; pacing past its end or clear_tour returns them to the anchor).",
     inputSchema = {
       type = "object",
       properties = {
         file = { type = "string", description = "File path, relative to the Neovim instance's cwd or absolute" },
         line_start = { type = "integer", description = "First line of the stop (1-based)" },
         line_end = { type = "integer", description = "If given, highlight line_start..line_end at the stop" },
-        narration = { type = "string", description = "1-2 sentence explanation of this stop" },
+        info = { type = "string", description = "1-2 sentence explanation of this stop" },
         branch = { type = "boolean", description = "Start a sub-tour anchored at the user's current stop; this stop becomes its stop 1. No-op semantics without a live tour (starts a normal tour)." },
       },
-      required = { "file", "line_start", "narration" },
+      required = { "file", "line_start", "info" },
     },
   },
   {
     name = "clear_tour",
-    description = "End the active tour level. With a sub-tour active, pops ONE level and returns the user to the parent stop they branched from (result: popped_to). At the root (or with all=true) it clears everything: stops, highlights, narration float. Saved tours are never deleted.",
+    description = "End the active tour level. With a sub-tour active, pops ONE level and returns the user to the parent stop they branched from (result: popped_to). At the root (or with all=true) it clears everything: stops, highlights, info float. Saved tours are never deleted.",
     inputSchema = {
       type = "object",
       properties = {

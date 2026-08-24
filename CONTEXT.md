@@ -1,6 +1,6 @@
 # Docent
 
-A Neovim plugin that lets any external coding agent (Claude Code, Pi, Gemini CLI, …) guide the user through a codebase by navigating their editor — jumping, highlighting, and narrating — instead of pasting code into chat. The user typically talks to the agent by voice, but voice is environmental (OS-level dictation), not part of the plugin.
+A Neovim plugin that lets any external coding agent (Claude Code, Pi, Gemini CLI, …) guide the user through a codebase by navigating their editor — jumping, highlighting, and explaining — instead of pasting code into chat. The user typically talks to the agent by voice, but voice is environmental (OS-level dictation), not part of the plugin.
 
 ## Language
 
@@ -29,16 +29,16 @@ An ordered sequence of Stops the Agent queues to explain a flow; the user paces 
 _Avoid_: walkthrough, session
 
 **Stop**:
-One location in a Tour plus its Narration.
+One location in a Tour plus its Info.
 _Avoid_: step, waypoint, bookmark
 
 **Sub-tour**:
 A Tour branched from a Stop of a parent Tour to explore a tangent; ending it returns the user to that parent Stop. Tours therefore form a tree, but only the deepest branch is active at a time.
 _Avoid_: detour, side tour, nested tour
 
-**Narration**:
-The Agent's 1–2 sentence explanation attached to a Stop or Jump, shown in a float at the target range and optionally spoken via TTS.
-_Avoid_: comment, annotation, message
+**Info**:
+The Agent's 1–2 sentence explanation attached to a Stop or Jump, shown in a float at the target range; an Agent conversing by voice also reads it aloud.
+_Avoid_: narration, comment, annotation, message
 
 **Editor Context**:
 The read-only snapshot Docent exposes to the Agent: current file, cursor position, and visual selection.
@@ -47,19 +47,19 @@ _Avoid_: state, environment
 ## Relationships
 
 - An **Agent** spawns one **Relay** per session; the Relay targets exactly one Neovim instance chosen via the **Instance Registry** (instance whose cwd contains the Relay's cwd; most-recently-focused wins ties).
-- A **Tour** contains one or more **Stops**, each carrying one **Narration**.
-- A **Jump** carries an optional **Narration** but never belongs to a **Tour**.
+- A **Tour** contains one or more **Stops**, each carrying one **Info**.
+- A **Jump** carries an optional **Info** but never belongs to a **Tour**.
 - The **Agent** advances nothing in a **Tour** after the first Stop — the user paces with keymaps (`]t` / `[t`) while the Agent may keep queueing Stops ahead.
 - A **Sub-tour** is anchored to exactly one parent **Stop**; pacing past its end (or an explicit back command) pops to the parent Tour at that Stop.
 
 ## Tool surface (the whole contract)
 
-Navigation + narration only — no edits, no shell, no buffer writes. Agents use their own tools to read/grep/edit files on disk.
+Navigation + info only — no edits, no shell, no buffer writes. Agents use their own tools to read/grep/edit files on disk.
 
-- `jump_to(file, line_start?, line_end?, narration?)` — immediate Jump
+- `jump_to(file, line_start?, line_end?, info?)` — immediate Jump
 - `highlight(ranges)` — visual markers without moving the cursor
-- `narrate(text)` — Narration not tied to a location
-- `add_tour_stop(file, line_start, line_end?, narration)` — queue a Stop (first Stop auto-jumps)
+- `show_info(text)` — Info not tied to a location
+- `add_tour_stop(file, line_start, line_end?, info)` — queue a Stop (first Stop auto-jumps)
 - `clear_tour()` / `list_tour()` — Tour lifecycle
 - `get_editor_context()` — Editor Context readback
 
@@ -70,9 +70,10 @@ The tool count grows reluctantly: new capabilities extend the semantics of exist
 ## Example dialogue
 
 > **Dev:** "If the user asks 'where do we dedupe pre-meeting deliveries?', does the **Agent** start a **Tour**?"
-> **Domain expert:** "No — that's a single-answer question, so it's a **Jump** with a one-line **Narration**. A **Tour** only exists when the user asks to be walked through a flow, and even then the **Agent** only queues **Stops**; the user decides when to move."
+> **Domain expert:** "No — that's a single-answer question, so it's a **Jump** with a one-line **Info**. A **Tour** only exists when the user asks to be walked through a flow, and even then the **Agent** only queues **Stops**; the user decides when to move."
 
 ## Flagged ambiguities
 
-- "voice plugin" — Docent is not one. Voice input is OS-level dictation into the Agent's terminal; voice output (TTS of Narration) is an opt-in plugin feature. Resolved: Docent is a code-tour plugin whose primary user is an Agent.
+- "voice plugin" — Docent is not one. Voice input is OS-level dictation into the Agent's terminal; voice output is the Agent’s job (it reads each Info aloud when the conversation is by voice), not the plugin’s. Resolved: Docent is a code-tour plugin whose primary user is an Agent.
+- "narration" — the term was renamed to **Info**: shorter, and it names the content rather than the delivery (the same text is floated visually and spoken by voice-mode Agents).
 - "agent-agnostic" vs "provider-agnostic" — CodeCompanion/avante custom tools would only be provider-agnostic (their own agent loop, swapping LLM APIs). Docent is agent-agnostic: the user's real coding agents drive it over MCP. Resolved: agent-agnostic is the requirement.
