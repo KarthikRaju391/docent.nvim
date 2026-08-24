@@ -69,7 +69,7 @@ Agents are told your real pacing keys: the relay reads what docent actually boun
 
 ### Saved tours
 
-A good tour is documentation. `save_tour` (or `:DocentSave <title>`) writes it to `.docent/tours/<slug>.json` in your project — file paths are stored relative to the project root, so commit the directory and your whole team (and their agents) gets the tour. Agents are instructed to check `list_saved_tours` before re-deriving a flow, and to load an existing tour instead; `load_tour` / `:DocentTours` brings one back and jumps to stop 1. Saved tours can drift as code changes — lines are approximate, and that's accepted v1 behavior. `clear_tour` only clears the live tour, never saved files.
+A good tour is documentation. (This repo ships one of itself — ask your agent what saved tours it can find here.) `save_tour` (or `:DocentSave <title>`) writes it to `.docent/tours/<slug>.json` in your project — file paths are stored relative to the project root, so commit the directory and your whole team (and their agents) gets the tour. Agents are instructed to check `list_saved_tours` before re-deriving a flow, and to load an existing tour instead; `load_tour` / `:DocentTours` brings one back and jumps to stop 1. Saved tours can drift as code changes — lines are approximate, and that's accepted v1 behavior. `clear_tour` only clears the live tour, never saved files.
 
 The agent's tool surface is navigation + info only — no edits, no shell. Tools: `jump_to`, `highlight`, `show_info`, `add_tour_stop`, `clear_tour`, `list_tour`, `save_tour`, `list_saved_tours`, `load_tour`, `get_editor_context`.
 

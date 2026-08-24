@@ -1,1 +1,67 @@
-{"created_at":1787593900,"stops":[{"line_start":335,"file":"relay/relay.lua","line_end":356,"info":"This slice starts when an Agent sends an MCP tools/call request. The Relay validates the tool name, forwards its arguments, and converts success or failure into MCP's text result shape."},{"line_start":275,"file":"relay/relay.lua","line_end":287,"info":"The Relay crosses the process boundary here: it discovers the target Neovim, invokes docent.rpc.dispatch over nvim_exec_lua, and retries once if that RPC channel died."},{"line_start":3,"file":"lua/docent/rpc.lua","line_end":17,"info":"Inside the user's Neovim, this tiny dispatcher maps the MCP tool name to a function in docent.tools. pcall keeps plugin errors contained and turns them into data the Relay can return cleanly."},{"line_start":62,"file":"lua/docent/tools.lua","line_end":81,"info":"This is the application boundary for add_tour_stop: resolve and verify the file, validate line and Info, then pass a normalized Stop into the Tour domain. Only the first Stop returns the user's real pacing key."},{"line_start":73,"file":"lua/docent/tour.lua","line_end":86,"info":"The Tour owns the live state as stack frames. Adding the first Stop creates a root frame, installs the temporary escape behavior, and auto-navigates; later Stops only queue, preserving user control."},{"line_start":46,"file":"lua/docent/tour.lua","line_end":67,"info":"Navigation is the editor-side effect seam: reuse an existing window or edit the file, clamp the requested line, center the cursor, then delegate range highlighting and the Info float to the UI."},{"line_start":45,"file":"lua/docent/ui.lua","line_end":78,"info":"The UI renders a Stop's Info in a non-focusable cursor-relative float, sizes it to wrapped content, and closes it on the user's next cursor move or buffer change."},{"line_start":123,"file":"lua/docent/init.lua","line_end":138,"info":"Control now passes back to the user: setup binds the configured next and previous keys only when they do not overwrite a user mapping, and records the keys so Agents report the actual pacing control."},{"line_start":89,"file":"lua/docent/tour.lua","line_end":124,"info":"When the user advances, next chooses the following Stop and goto_stop updates current before reusing the same navigate path. At a sub-tour boundary it pops to the parent; at the root's end it stays put and reports completion."},{"line_start":508,"file":"tests/driver.py","line_end":550,"info":"The E2E case locks down the whole slice: first Stop auto-jumps, later Stops do not, the configured key advances in order, and pacing past the last Stop does not move the cursor."}],"slug":"tour-stop-from-mcp-to-editor","title":"Tour stop from MCP to editor"}
+{
+  "created_at": 1787593900,
+  "stops": [
+    {
+      "line_start": 335,
+      "file": "relay/relay.lua",
+      "line_end": 356,
+      "info": "This slice starts when an Agent sends an MCP tools/call request. The Relay validates the tool name, forwards its arguments, and converts success or failure into MCP's text result shape."
+    },
+    {
+      "line_start": 275,
+      "file": "relay/relay.lua",
+      "line_end": 287,
+      "info": "The Relay crosses the process boundary here: it discovers the target Neovim, invokes docent.rpc.dispatch over nvim_exec_lua, and retries once if that RPC channel died."
+    },
+    {
+      "line_start": 3,
+      "file": "lua/docent/rpc.lua",
+      "line_end": 17,
+      "info": "Inside the user's Neovim, this tiny dispatcher maps the MCP tool name to a function in docent.tools. pcall keeps plugin errors contained and turns them into data the Relay can return cleanly."
+    },
+    {
+      "line_start": 62,
+      "file": "lua/docent/tools.lua",
+      "line_end": 81,
+      "info": "This is the application boundary for add_tour_stop: resolve and verify the file, validate line and Info, then pass a normalized Stop into the Tour domain. Only the first Stop returns the user's real pacing key."
+    },
+    {
+      "line_start": 73,
+      "file": "lua/docent/tour.lua",
+      "line_end": 86,
+      "info": "The Tour owns the live state as stack frames. Adding the first Stop creates a root frame, installs the temporary escape behavior, and auto-navigates; later Stops only queue, preserving user control."
+    },
+    {
+      "line_start": 46,
+      "file": "lua/docent/tour.lua",
+      "line_end": 67,
+      "info": "Navigation is the editor-side effect seam: reuse an existing window or edit the file, clamp the requested line, center the cursor, then delegate range highlighting and the Info float to the UI."
+    },
+    {
+      "line_start": 45,
+      "file": "lua/docent/ui.lua",
+      "line_end": 78,
+      "info": "The UI renders a Stop's Info in a non-focusable cursor-relative float, sizes it to wrapped content, and closes it on the user's next cursor move or buffer change."
+    },
+    {
+      "line_start": 128,
+      "file": "lua/docent/init.lua",
+      "line_end": 153,
+      "info": "Control now passes back to the user: setup binds the configured next and previous keys only when they do not overwrite a user mapping, and records the keys so Agents report the actual pacing control."
+    },
+    {
+      "line_start": 89,
+      "file": "lua/docent/tour.lua",
+      "line_end": 124,
+      "info": "When the user advances, next chooses the following Stop and goto_stop updates current before reusing the same navigate path. At a sub-tour boundary it pops to the parent; at the root's end it stays put and reports completion."
+    },
+    {
+      "line_start": 508,
+      "file": "tests/driver.py",
+      "line_end": 550,
+      "info": "The E2E case locks down the whole slice: first Stop auto-jumps, later Stops do not, the configured key advances in order, and pacing past the last Stop does not move the cursor."
+    }
+  ],
+  "slug": "tour-stop-from-mcp-to-editor",
+  "title": "Tour stop from MCP to editor"
+}
