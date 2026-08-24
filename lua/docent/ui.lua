@@ -1,0 +1,87 @@
+local M = {}
+
+local ns = vim.api.nvim_create_namespace("docent")
+local hl_bufs = {}
+local float_win = nil
+local float_group = nil
+
+function M.setup_hl()
+  vim.api.nvim_set_hl(0, "DocentRange", { link = "Visual", default = true })
+end
+
+function M.clear_highlights()
+  for buf in pairs(hl_bufs) do
+    if vim.api.nvim_buf_is_valid(buf) then
+      vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+    end
+  end
+  hl_bufs = {}
+end
+
+function M.add_highlight(buf, line_start, line_end)
+  M.setup_hl()
+  local last = vim.api.nvim_buf_line_count(buf)
+  local s = math.min(math.max(line_start or 1, 1), last)
+  local e = math.min(math.max(line_end or s, s), last)
+  for line = s, e do
+    vim.api.nvim_buf_set_extmark(buf, ns, line - 1, 0, {
+      line_hl_group = "DocentRange",
+    })
+  end
+  hl_bufs[buf] = true
+end
+
+function M.close_float()
+  if float_win and vim.api.nvim_win_is_valid(float_win) then
+    vim.api.nvim_win_close(float_win, true)
+  end
+  float_win = nil
+  if float_group then
+    pcall(vim.api.nvim_del_augroup_by_id, float_group)
+    float_group = nil
+  end
+end
+
+function M.show_float(text)
+  M.close_float()
+  local lines = vim.split(text, "\n", { plain = true })
+  local maxlen = 1
+  for _, l in ipairs(lines) do
+    maxlen = math.max(maxlen, vim.fn.strdisplaywidth(l))
+  end
+  local width = math.min(60, maxlen)
+  local height = 0
+  for _, l in ipairs(lines) do
+    height = height + math.max(1, math.ceil(vim.fn.strdisplaywidth(l) / width))
+  end
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].bufhidden = "wipe"
+  float_win = vim.api.nvim_open_win(buf, false, {
+    relative = "cursor",
+    row = 1,
+    col = 0,
+    width = width,
+    height = math.min(height, 10),
+    style = "minimal",
+    border = "rounded",
+    title = " Docent ",
+    focusable = false,
+  })
+  vim.wo[float_win].wrap = true
+  local win = float_win
+  -- deferred so the jump's own CursorMoved doesn't instantly close it
+  vim.defer_fn(function()
+    if win ~= float_win or not vim.api.nvim_win_is_valid(win) then
+      return
+    end
+    float_group = vim.api.nvim_create_augroup("DocentFloat", { clear = true })
+    vim.api.nvim_create_autocmd({ "CursorMoved", "BufLeave" }, {
+      group = float_group,
+      once = true,
+      callback = M.close_float,
+    })
+  end, 100)
+end
+
+return M
