@@ -73,7 +73,50 @@ function M.add_tour_stop(args)
     line_end = args.line_end,
     narration = args.narration,
   })
-  return { index = index, total = total }
+  local result = { index = index, total = total }
+  if index == 1 then
+    result.pace_with = require("docent").pacing_keys().next or ":DocentNext"
+  end
+  return result
+end
+
+function M.save_tour(args)
+  if type(args.title) ~= "string" or args.title == "" then
+    error("missing required argument: title", 0)
+  end
+  if #tour.stops == 0 then
+    error("no active tour to save", 0)
+  end
+  local saved = require("docent.store").save(args.title, tour.stops, vim.fn.getcwd())
+  tour.title = args.title
+  return saved
+end
+
+function M.list_saved_tours(_)
+  return { tours = require("docent.store").list(vim.fn.getcwd()) }
+end
+
+function M.load_tour(args)
+  if type(args.slug) ~= "string" or args.slug == "" then
+    error("missing required argument: slug", 0)
+  end
+  local cwd = vim.fn.getcwd()
+  local data = require("docent.store").load(args.slug, cwd)
+  local abs = {}
+  for i, s in ipairs(data.stops) do
+    local file = s.file
+    if not vim.startswith(file, "/") then
+      file = cwd .. "/" .. file
+    end
+    abs[i] = { file = file, line_start = s.line_start, line_end = s.line_end, narration = s.narration }
+  end
+  tour.load_stops(abs, data.title)
+  return {
+    title = data.title,
+    slug = data.slug or args.slug,
+    stops = data.stops,
+    current = #abs > 0 and 1 or 0,
+  }
 end
 
 function M.clear_tour(_)
@@ -94,6 +137,20 @@ function M.get_editor_context(_)
     mode = mode,
     cwd = vim.fn.getcwd(),
   }
+  if #tour.stops > 0 then
+    local stop = tour.stops[tour.current]
+    ctx.tour = {
+      title = tour.title or vim.NIL,
+      current = tour.current,
+      total = #tour.stops,
+      stop = stop and {
+        file = stop.file,
+        line_start = stop.line_start,
+        line_end = stop.line_end,
+        narration = stop.narration,
+      } or nil,
+    }
+  end
   if mode:match("^[vV\022]") then
     local anchor = vim.fn.getpos("v")[2]
     local head = vim.fn.getpos(".")[2]

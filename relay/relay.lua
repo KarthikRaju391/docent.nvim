@@ -3,7 +3,27 @@
 
 local PROTOCOL_VERSION = "2025-06-18"
 
-local INSTRUCTIONS = [[You are connected to the user's Neovim as a docent: answer codebase questions by navigating their editor, not by pasting code into chat. For single-answer "where is X" questions call jump_to with a 1-2 sentence narration. For "walk me through / explain this flow" questions, queue one add_tour_stop per hop in reading order with a 1-2 sentence narration each — the user paces through stops themselves with ]t/[t; never re-jump them. Call get_editor_context first when the user says "this" or refers to what they're looking at. Never paste code blocks into chat that the user can be shown in their editor; keep chat replies to one short sentence.]]
+-- Pacing keys are per-user config; never name specific keys unless the instance
+-- confirms docent actually bound them.
+local function build_instructions(keys)
+  local pacing
+  if keys and keys.next and keys.prev then
+    pacing = ("with %s/%s"):format(keys.next, keys.prev)
+  else
+    pacing = "with their configured docent keys or :DocentNext/:DocentPrev"
+  end
+  return table.concat({
+    "You are connected to the user's Neovim as a docent: answer codebase questions by navigating their editor, not by pasting code into chat.",
+    'For single-answer "where is X" questions call jump_to with a 1-2 sentence narration.',
+    'For "walk me through / explain this flow" questions, first call list_saved_tours — a saved tour IS the documented code path for its feature; if one covers the flow, load_tour it instead of re-deriving the path.',
+    "Otherwise queue one add_tour_stop per hop in reading order with a 1-2 sentence narration each — the user paces through stops themselves "
+      .. pacing
+      .. "; never re-jump them.",
+    "After building a good tour, save_tour it with a short feature-name title so it is there next time.",
+    'Call get_editor_context first when the user says "this" or refers to what they\'re looking at. When the user is on a tour and asks about "this" or the current code, call get_editor_context — it includes their exact tour stop; answer in the context of that stop and narrate/jump onward rather than starting over.',
+    "Never paste code blocks into chat that the user can be shown in their editor; keep chat replies to one short sentence.",
+  }, " ")
+end
 
 local function log(msg)
   io.stderr:write("[docent-relay] " .. msg .. "\n")
@@ -65,7 +85,7 @@ local TOOLS = {
   },
   {
     name = "add_tour_stop",
-    description = "Queue one stop of a guided tour: a location plus a 1-2 sentence narration. Use one call per hop, in reading order, when the user asks to be walked through a flow. The first stop of a fresh tour navigates the user there; after that the user paces themselves with ]t/[t — never re-jump them.",
+    description = "Queue one stop of a guided tour: a location plus a 1-2 sentence narration. Use one call per hop, in reading order, when the user asks to be walked through a flow. The first stop of a fresh tour navigates the user there and its result includes pace_with — the key or command the user paces with; quote that, never assume specific keys. After the first stop the user paces themselves — never re-jump them.",
     inputSchema = {
       type = "object",
       properties = {
@@ -96,8 +116,39 @@ local TOOLS = {
     },
   },
   {
+    name = "save_tour",
+    description = "Persist the current tour to <project>/.docent/tours/<slug>.json (committable, so teammates and other agents find it). Call after building a good tour, with a short feature-name title. Errors if the tour is empty.",
+    inputSchema = {
+      type = "object",
+      properties = {
+        title = { type = "string", description = "Short feature name for the tour, e.g. 'meeting import flow'" },
+      },
+      required = { "title" },
+    },
+  },
+  {
+    name = "list_saved_tours",
+    description = "List tours saved in the current project (.docent/tours/). Call this BEFORE building a tour for a flow — an existing tour is the documented code path; load_tour it instead of re-deriving the flow.",
+    inputSchema = {
+      type = "object",
+      properties = vim.empty_dict(),
+      required = {},
+    },
+  },
+  {
+    name = "load_tour",
+    description = "Load a saved tour into the live tour state and navigate the user to stop 1. Returns the full stops list — read it to learn the code path for the feature without re-searching. Stops may drift as code changes; treat lines as approximate.",
+    inputSchema = {
+      type = "object",
+      properties = {
+        slug = { type = "string", description = "Tour slug from list_saved_tours" },
+      },
+      required = { "slug" },
+    },
+  },
+  {
     name = "get_editor_context",
-    description = "Read what the user is looking at: current file, cursor position, mode, visual selection (if any), and the instance cwd. Call this first whenever the user says 'this' or otherwise refers to what's on their screen.",
+    description = "Read what the user is looking at: current file, cursor position, mode, visual selection (if any), and the instance cwd. If a tour is live, also includes tour = { title, current, total, stop } for the stop the user is at — the cursor may have wandered from the stop, so both are reported; both are signal. Call this first whenever the user says 'this' or otherwise refers to what's on their screen, and answer tour questions in the context of the reported stop.",
     inputSchema = {
       type = "object",
       properties = vim.empty_dict(),
@@ -249,6 +300,19 @@ local function tool_result(id, text, is_error)
   })
 end
 
+-- Must not fail the handshake: discovery and key fetch are best-effort here.
+local function fetch_pacing_keys()
+  local ok = pcall(ensure_chan)
+  if not ok then
+    return nil
+  end
+  local ok2, keys = pcall(vim.rpcrequest, chan, "nvim_exec_lua", "return require('docent').pacing_keys()", {})
+  if ok2 and type(keys) == "table" then
+    return keys
+  end
+  return nil
+end
+
 local function handle_initialize(msg)
   local client_version = msg.params and msg.params.protocolVersion
   local version = PROTOCOL_VERSION
@@ -259,7 +323,7 @@ local function handle_initialize(msg)
     protocolVersion = version,
     capabilities = { tools = { listChanged = false } },
     serverInfo = { name = "docent", version = "0.1.0" },
-    instructions = INSTRUCTIONS,
+    instructions = build_instructions(fetch_pacing_keys()),
   })
 end
 

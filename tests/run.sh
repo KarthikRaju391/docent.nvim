@@ -14,6 +14,9 @@ else
 fi
 
 cleanup() {
+  # Persistent-tour tests write into the fixture (inside the working tree);
+  # never leave that behind, even if the driver was interrupted.
+  rm -rf "$ROOT/tests/fixture/.docent"
   if [ "${KEEP_TMP:-0}" = "1" ]; then
     echo "KEEP_TMP=1: leaving temp dir at $TMP"
   else

@@ -1,6 +1,16 @@
 local M = {}
 
 local did_setup = false
+local bound_keys = {}
+
+-- Only keys docent actually bound; nil for keys skipped (user-mapped or keymaps=false).
+function M.pacing_keys()
+  return {
+    next = bound_keys.next,
+    prev = bound_keys.prev,
+    commands = ":DocentNext/:DocentPrev",
+  }
+end
 
 function M.mcp_command()
   local src = debug.getinfo(1, "S").source:sub(2)
@@ -48,6 +58,43 @@ function M.setup(opts)
     end
     tour.goto_stop(n)
   end, { nargs = 1, desc = "Docent: go to tour stop <n>" })
+  vim.api.nvim_create_user_command("DocentRestart", function()
+    tour.restart()
+  end, { desc = "Docent: jump back to tour stop 1" })
+  vim.api.nvim_create_user_command("DocentSave", function(cmd)
+    if #tour.stops == 0 then
+      vim.notify("docent: no active tour to save", vim.log.levels.WARN)
+      return
+    end
+    local ok, res = pcall(require("docent.store").save, cmd.args, tour.stops)
+    if not ok then
+      vim.notify("docent: " .. tostring(res), vim.log.levels.ERROR)
+      return
+    end
+    tour.title = cmd.args
+    vim.notify(("docent: saved tour '%s' to %s"):format(cmd.args, res.path), vim.log.levels.INFO)
+  end, { nargs = "+", desc = "Docent: save the current tour as <title>" })
+  vim.api.nvim_create_user_command("DocentTours", function()
+    local tours = require("docent.store").list()
+    if #tours == 0 then
+      vim.notify("docent: no saved tours in " .. vim.fn.getcwd(), vim.log.levels.INFO)
+      return
+    end
+    vim.ui.select(tours, {
+      prompt = "Docent tours",
+      format_item = function(t)
+        return ("%s (%d stops)"):format(t.title or t.slug, t.stop_count)
+      end,
+    }, function(choice)
+      if not choice then
+        return
+      end
+      local ok, err = pcall(require("docent.tools").load_tour, { slug = choice.slug })
+      if not ok then
+        vim.notify("docent: " .. tostring(err), vim.log.levels.ERROR)
+      end
+    end)
+  end, { desc = "Docent: pick and load a saved tour" })
   vim.api.nvim_create_user_command("DocentMcpCommand", function()
     vim.api.nvim_echo({ { M.mcp_command() } }, true, {})
   end, { desc = "Docent: show the MCP registration command for agents" })
@@ -58,9 +105,11 @@ function M.setup(opts)
     local prev_key = keymaps.prev or "[t"
     if not user_mapped(next_key) then
       vim.keymap.set("n", next_key, tour.next, { desc = "Docent: next tour stop" })
+      bound_keys.next = next_key
     end
     if not user_mapped(prev_key) then
       vim.keymap.set("n", prev_key, tour.prev, { desc = "Docent: previous tour stop" })
+      bound_keys.prev = prev_key
     end
   end
 end

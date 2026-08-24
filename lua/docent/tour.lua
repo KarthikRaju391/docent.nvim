@@ -4,6 +4,7 @@ local M = {}
 
 M.stops = {}
 M.current = 0
+M.title = nil
 
 -- Shared jump mechanics: open file (reusing a window that already shows it),
 -- move cursor, center, highlight the range, show the narration float.
@@ -73,9 +74,27 @@ function M.prev()
   M.goto_stop(M.current - 1)
 end
 
+function M.restart()
+  if #M.stops == 0 then
+    vim.notify("docent: no active tour to restart", vim.log.levels.WARN)
+    return
+  end
+  M.goto_stop(1)
+end
+
+function M.load_stops(stops, title)
+  M.stops = stops
+  M.current = 0
+  M.title = title
+  if #M.stops > 0 then
+    M.goto_stop(1)
+  end
+end
+
 function M.clear()
   M.stops = {}
   M.current = 0
+  M.title = nil
   ui.clear_highlights()
   ui.close_float()
 end

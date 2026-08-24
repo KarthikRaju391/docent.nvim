@@ -13,6 +13,7 @@ import itertools
 import json
 import os
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -33,7 +34,29 @@ READMEMD = os.path.join(FIXTURE, "README.md")
 EXPECTED_TOOLS = {
     "jump_to", "highlight", "narrate", "add_tour_stop",
     "clear_tour", "list_tour", "get_editor_context",
+    "save_tour", "list_saved_tours", "load_tour",
 }
+
+# Pacing keys configured in tests/minimal_init.lua (deliberately non-default,
+# to prove instructions/hints report the REAL bound keys).
+NEXT_KEY = "]v"
+DEFAULT_NEXT_KEY = "]t"
+
+DOCENT_DIR = os.path.join(FIXTURE, ".docent")
+
+
+def clean_docent():
+    """tests/fixture is inside the repo working tree; keep it clean."""
+    shutil.rmtree(DOCENT_DIR, ignore_errors=True)
+
+
+def wait_for(pred, timeout, what):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if pred():
+            return
+        time.sleep(0.1)
+    raise Fail(what)
 
 RESPONSE_TIMEOUT = 5.0
 
@@ -281,7 +304,8 @@ class Relay:
         self.notify("notifications/initialized")
         return result
 
-    def call_tool(self, name, arguments):
+    def call_raw(self, name, arguments):
+        """tools/call → the full result dict (content shape asserted)."""
         resp = self.request("tools/call", {"name": name, "arguments": arguments})
         check("result" in resp,
               "tools/call %s returned a JSON-RPC error instead of a result "
@@ -293,7 +317,11 @@ class Relay:
         check(first.get("type") == "text" and isinstance(first.get("text"), str),
               "tools/call %s: content[0] is not {type:'text', text:...}" % name,
               actual=first)
-        return bool(result.get("isError")), first["text"]
+        return result
+
+    def call_tool(self, name, arguments):
+        result = self.call_raw(name, arguments)
+        return bool(result.get("isError")), result["content"][0]["text"]
 
     def tool_text(self, name, arguments):
         is_error, text = self.call_tool(name, arguments)
@@ -483,15 +511,17 @@ def case_tour(ctx):
               "list_tour does not mention stop file %s" % os.path.basename(f),
               actual=text[:500])
 
-    ed.send_keys("]t")
-    ed.wait_position(*stops[1], what="]t did not advance to stop 2")
+    ed.send_keys(NEXT_KEY)
+    ed.wait_position(*stops[1],
+                     what="%s did not advance to stop 2" % NEXT_KEY)
 
-    ed.send_keys("]t")
-    ed.wait_position(*stops[2], what="second ]t did not advance to stop 3")
+    ed.send_keys(NEXT_KEY)
+    ed.wait_position(*stops[2],
+                     what="second %s did not advance to stop 3" % NEXT_KEY)
 
-    ed.send_keys("]t")
+    ed.send_keys(NEXT_KEY)
     ed.assert_position(*stops[2], settle=1.0,
-                       what="]t past the last stop moved the cursor")
+                       what="%s past the last stop moved the cursor" % NEXT_KEY)
 
     relay.tool_text("clear_tour", {})
     text = relay.tool_text("list_tour", {})
@@ -591,6 +621,227 @@ def case_empty_registry(ctx):
     relay.assert_all_json()
 
 
+def case_pacing_keys(ctx):
+    ed = ctx.editor()
+    relay = ctx.relay()
+
+    # The plugin itself must report the configured keys.
+    keys_json = ed.expr(
+        "luaeval('vim.json.encode(require(\"docent\").pacing_keys())')")
+    check(NEXT_KEY in keys_json,
+          "pacing_keys() does not report the configured next key",
+          expected=NEXT_KEY, actual=keys_json)
+    check(DEFAULT_NEXT_KEY not in keys_json,
+          "pacing_keys() still reports the default %s" % DEFAULT_NEXT_KEY,
+          actual=keys_json)
+
+    # With a live instance discoverable at initialize time, instructions must
+    # carry the REAL bound keys.
+    init = relay.handshake()
+    instr = init.get("instructions") or ""
+    check(NEXT_KEY in instr,
+          "initialize instructions do not mention the real bound key %s"
+          % NEXT_KEY, actual=instr[:600])
+    check(DEFAULT_NEXT_KEY not in instr,
+          "initialize instructions mention %s, but that key is not bound"
+          % DEFAULT_NEXT_KEY, actual=instr[:600])
+
+    # First stop of a tour returns a pace_with hint with the real key.
+    result = relay.call_raw("add_tour_stop",
+                            {"file": APP, "line_start": 3,
+                             "narration": "first stop"})
+    check(not result.get("isError"), "add_tour_stop failed", actual=result)
+    dump = json.dumps(result)
+    check("pace_with" in dump,
+          "first add_tour_stop result has no pace_with hint", actual=dump[:600])
+    check(NEXT_KEY in dump,
+          "pace_with hint does not carry the real key %s" % NEXT_KEY,
+          actual=dump[:600])
+
+    relay.assert_all_json()
+
+
+def case_persistent_tours(ctx):
+    clean_docent()
+    try:
+        ed = ctx.editor()
+        relay = ctx.relay()
+        relay.handshake()
+
+        is_error, text = relay.call_tool("save_tour", {"title": "Import Flow"})
+        check(is_error, "save_tour with an empty tour should be isError=true",
+              actual=text[:300])
+
+        stops = [(APP, 3, "module table"), (UTIL, 5, "the add"),
+                 (READMEMD, 2, "docs")]
+        for f, l, n in stops:
+            relay.tool_text("add_tour_stop",
+                            {"file": f, "line_start": l, "narration": n})
+        ed.wait_position(APP, 3, "first tour stop did not auto-jump")
+
+        relay.tool_text("save_tour", {"title": "Import Flow"})
+
+        tour_path = os.path.join(DOCENT_DIR, "tours", "import-flow.json")
+        wait_for(lambda: os.path.exists(tour_path), 3.0,
+                 "save_tour did not create %s" % tour_path)
+        with open(tour_path) as f:
+            saved = json.load(f)
+        check(saved.get("title") == "Import Flow", "saved tour title wrong",
+              expected="Import Flow", actual=saved.get("title"))
+        check(saved.get("slug") == "import-flow", "saved tour slug wrong",
+              expected="import-flow", actual=saved.get("slug"))
+        check("created_at" in saved, "saved tour missing created_at",
+              actual=sorted(saved.keys()))
+        saved_stops = saved.get("stops")
+        check(isinstance(saved_stops, list) and len(saved_stops) == len(stops),
+              "saved tour stops count wrong",
+              expected=len(stops), actual=saved_stops)
+        for i, stop in enumerate(saved_stops):
+            f = stop.get("file")
+            check(isinstance(f, str) and f, "stop %d has no file" % i, actual=stop)
+            check(not os.path.isabs(f),
+                  "stop %d file is absolute; must be relative to project root"
+                  % i, actual=f)
+            check(os.path.exists(os.path.join(FIXTURE, f)),
+                  "stop %d relative file does not resolve under project root"
+                  % i, actual=f)
+            check(isinstance(stop.get("line_start"), int),
+                  "stop %d missing line_start" % i, actual=stop)
+            check(isinstance(stop.get("narration"), str) and stop["narration"],
+                  "stop %d missing narration" % i, actual=stop)
+
+        result = relay.call_raw("list_saved_tours", {})
+        check(not result.get("isError"), "list_saved_tours failed", actual=result)
+        dump = json.dumps(result)
+        check("import-flow" in dump or "Import Flow" in dump,
+              "list_saved_tours does not mention the saved tour",
+              actual=dump[:600])
+        check("stop_count" in dump or re.search(r"\b3\b\s*stops?", dump),
+              "list_saved_tours does not report stop_count", actual=dump[:600])
+
+        relay.tool_text("clear_tour", {})
+        text = relay.tool_text("list_tour", {})
+        check("util.lua" not in text, "clear_tour did not empty the tour",
+              actual=text[:300])
+
+        result = relay.call_raw("load_tour", {"slug": "import-flow"})
+        check(not result.get("isError"), "load_tour failed", actual=result)
+        dump = json.dumps(result)
+        for f, _, _ in stops:
+            check(os.path.basename(f) in dump,
+                  "load_tour result does not contain the full stops list "
+                  "(missing %s)" % os.path.basename(f), actual=dump[:800])
+        ed.wait_position(APP, 3, "load_tour did not navigate to stop 1")
+        text = relay.tool_text("list_tour", {})
+        for f, _, _ in stops:
+            check(os.path.basename(f) in text,
+                  "after load_tour, list_tour is missing %s"
+                  % os.path.basename(f), actual=text[:500])
+
+        is_error, text = relay.call_tool("load_tour", {"slug": "no-such-tour"})
+        check(is_error, "load_tour with unknown slug should be isError=true",
+              actual=text[:300])
+
+        relay.assert_all_json()
+    finally:
+        clean_docent()
+
+
+def case_user_commands(ctx):
+    clean_docent()
+    try:
+        ed = ctx.editor()
+        relay = ctx.relay()
+        relay.handshake()
+
+        for cmd in ("DocentRestart", "DocentSave", "DocentTours"):
+            got = ed.expr("exists(':%s')" % cmd)
+            check(got == "2", "user command :%s does not exist" % cmd,
+                  expected="2 (full command match)", actual=got)
+
+        relay.tool_text("add_tour_stop", {"file": APP, "line_start": 3,
+                                          "narration": "stop one"})
+        relay.tool_text("add_tour_stop", {"file": UTIL, "line_start": 5,
+                                          "narration": "stop two"})
+        ed.wait_position(APP, 3, "first tour stop did not auto-jump")
+
+        ed.send_keys(NEXT_KEY)
+        ed.wait_position(UTIL, 5, "%s did not advance to stop 2" % NEXT_KEY)
+
+        ed.send_keys("<Esc>:DocentRestart<CR>")
+        ed.wait_position(APP, 3, ":DocentRestart did not return to stop 1")
+
+        ed.send_keys("<Esc>:DocentSave Cmd Flow<CR>")
+        tours_dir = os.path.join(DOCENT_DIR, "tours")
+        wait_for(lambda: os.path.isdir(tours_dir) and os.listdir(tours_dir),
+                 3.0, ":DocentSave did not create a tour file under %s"
+                 % tours_dir)
+
+        relay.assert_all_json()
+    finally:
+        clean_docent()
+
+
+def _mentions_tour_position(dump, current, total):
+    """Match 'current of/(slash) total' prose or structured current/total."""
+    if re.search(r"\b%d\s*(?:of|/)\s*%d\b" % (current, total), dump):
+        return True
+    return (re.search(r'"current"\s*:\s*%d\b' % current, dump) is not None
+            and re.search(r'"total"\s*:\s*%d\b' % total, dump) is not None)
+
+
+def case_context_tour_awareness(ctx):
+    ed = ctx.editor()
+    relay = ctx.relay()
+    relay.handshake()
+
+    narr2 = "NARR-STOP-TWO: where addition happens"
+    relay.tool_text("add_tour_stop", {"file": APP, "line_start": 3,
+                                      "narration": "stop one"})
+    relay.tool_text("add_tour_stop", {"file": UTIL, "line_start": 5,
+                                      "narration": narr2})
+    relay.tool_text("add_tour_stop", {"file": READMEMD, "line_start": 2,
+                                      "narration": "stop three"})
+    ed.wait_position(APP, 3, "first tour stop did not auto-jump")
+
+    ed.send_keys(NEXT_KEY)
+    ed.wait_position(UTIL, 5, "%s did not advance to stop 2" % NEXT_KEY)
+
+    dump = relay.tool_text("get_editor_context", {})
+    check(_mentions_tour_position(dump, 2, 3),
+          "get_editor_context does not report tour position 2 of 3",
+          actual=dump[:800])
+    check("util.lua" in dump,
+          "get_editor_context does not report stop 2's file", actual=dump[:800])
+    check(narr2 in dump,
+          "get_editor_context does not report stop 2's narration",
+          actual=dump[:800])
+
+    # Wander off the stop: tour info must still say stop 2, cursor must not.
+    ed.send_keys("<Esc>jj")
+    ed.wait_position(UTIL, 7, "j motions did not move the cursor to line 7")
+    dump = relay.tool_text("get_editor_context", {})
+    check(_mentions_tour_position(dump, 2, 3),
+          "after moving away, tour info no longer reports stop 2 of 3",
+          actual=dump[:800])
+    check(narr2 in dump,
+          "after moving away, stop 2's narration is gone", actual=dump[:800])
+    check("7" in dump,
+          "after moving away, cursor fields do not reflect the real position "
+          "(line 7)", actual=dump[:800])
+
+    relay.tool_text("clear_tour", {})
+    dump = relay.tool_text("get_editor_context", {})
+    check(narr2 not in dump,
+          "after clear_tour, get_editor_context still reports stop narration",
+          actual=dump[:800])
+    check(not _mentions_tour_position(dump, 2, 3),
+          "after clear_tour, get_editor_context still reports a tour position",
+          actual=dump[:800])
+
+    relay.assert_all_json()
+
+
 CASES = [
     ("registry", case_registry),
     ("handshake", case_handshake),
@@ -600,7 +851,40 @@ CASES = [
     ("narrate_highlight", case_narrate_highlight),
     ("discovery_two_instances", case_discovery),
     ("discovery_empty_registry", case_empty_registry),
+    ("pacing_keys", case_pacing_keys),
+    ("persistent_tours", case_persistent_tours),
+    ("user_commands", case_user_commands),
+    ("context_tour_awareness", case_context_tour_awareness),
 ]
+
+
+def impl_has(marker):
+    for base in (os.path.join(ROOT, "lua"), os.path.join(ROOT, "relay")):
+        for dirpath, _, files in os.walk(base):
+            for fn in files:
+                if not fn.endswith(".lua"):
+                    continue
+                try:
+                    with open(os.path.join(dirpath, fn), errors="replace") as f:
+                        if marker in f.read():
+                            return True
+                except OSError:
+                    pass
+    return False
+
+
+def wait_for_impl(marker="save_tour", timeout=600, interval=30):
+    """The executor may still be writing; poll for the round-2 surface."""
+    deadline = time.monotonic() + timeout
+    while not impl_has(marker):
+        if time.monotonic() >= deadline:
+            print("WARNING: implementation marker %r never appeared after "
+                  "%ds; running the suite anyway." % (marker, timeout))
+            return False
+        print("waiting for implementation (%r not found in lua/ or relay/); "
+              "retrying in %ds..." % (marker, interval))
+        time.sleep(interval)
+    return True
 
 
 def main():
@@ -622,8 +906,12 @@ def main():
             print("  missing: %s" % p)
         return 2
 
+    if os.environ.get("DOCENT_WAIT_IMPL", "0") == "1":
+        wait_for_impl()
+
     global SOCK_DIR
     SOCK_DIR = tempfile.mkdtemp(prefix="docent-t-")
+    clean_docent()
 
     results = []
     for name, fn in CASES:
@@ -648,6 +936,7 @@ def main():
                                results[-1][2] + "\n" + tails, results[-1][3])
 
     shutil.rmtree(SOCK_DIR, ignore_errors=True)
+    clean_docent()
 
     print()
     print("=" * 64)
