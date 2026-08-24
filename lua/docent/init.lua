@@ -79,44 +79,6 @@ function M.setup(opts)
     end
     require("docent.ui").show_float(stop.info)
   end, { desc = "Docent: re-show the current stop's info float" })
-  vim.api.nvim_create_user_command("DocentAsk", function(cmd)
-    local stops = tour.active_stops()
-    local cur = tour.current()
-    local stop = stops[cur]
-    if not stop then
-      vim.notify("docent: no active tour stop to ask about", vim.log.levels.WARN)
-      return
-    end
-    local function compose(question)
-      local title = tour.get_title()
-      local parts = {
-        ("About stop %d/%d%s — %s:%d"):format(
-          cur,
-          #stops,
-          title and (" of tour '" .. title .. "'") or "",
-          vim.fn.fnamemodify(stop.file, ":."),
-          stop.line_start
-        ),
-        "Stop info: " .. (stop.info or ""),
-      }
-      if question and question ~= "" then
-        parts[#parts + 1] = "Question: " .. question
-      end
-      local text = table.concat(parts, "\n")
-      vim.fn.setreg("+", text)
-      vim.fn.setreg('"', text)
-      vim.notify("docent: question + stop context copied — paste into your agent", vim.log.levels.INFO)
-    end
-    if cmd.args ~= "" then
-      compose(cmd.args)
-    else
-      vim.ui.input({ prompt = "Ask about this stop: " }, function(q)
-        if q then
-          compose(q)
-        end
-      end)
-    end
-  end, { nargs = "*", desc = "Docent: copy a question about the current stop, with tour context, for your agent" })
   vim.api.nvim_create_user_command("DocentEnd", function()
     if tour.stop_count() == 0 and tour.depth() < 2 then
       vim.notify("docent: no active tour", vim.log.levels.WARN)

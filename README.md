@@ -45,7 +45,7 @@ Talking to your agent by voice? Voice-mode agents read each stop's info aloud as
 
 While a tour is live, pressing `<Esc>` twice within a second (normal mode) ends the whole tour. A single `<Esc>` behaves exactly as before — the transient mapping chains to whatever your `<Esc>` did (e.g. clearing search highlights) and is removed when the tour ends. Disable with `opts = { esc_ends_tour = false }`.
 
-Commands: `:DocentNext`, `:DocentPrev`, `:DocentStop <n>`, `:DocentRestart` (back to stop 1 of the active tour), `:DocentBack` (end a sub-tour), `:DocentEnd` (exit the whole tour), `:DocentInfo` (re-show the current stop's info float), `:DocentAsk [question]` (copy a question about the current stop, with tour context, to paste into your agent), `:DocentSave <title>`, `:DocentTours` (picker), `:DocentMcpCommand`. Range highlights use the `DocentRange` group (links to `Visual`).
+Commands: `:DocentNext`, `:DocentPrev`, `:DocentStop <n>`, `:DocentRestart` (back to stop 1 of the active tour), `:DocentBack` (end a sub-tour), `:DocentEnd` (exit the whole tour), `:DocentInfo` (re-show the current stop's info float), `:DocentSave <title>`, `:DocentTours` (picker), `:DocentMcpCommand`. Range highlights use the `DocentRange` group (links to `Visual`).
 
 ### Sub-tours
 
