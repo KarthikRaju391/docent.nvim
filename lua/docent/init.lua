@@ -8,6 +8,7 @@ function M.pacing_keys()
   return {
     next = bound_keys.next,
     prev = bound_keys.prev,
+    skip = bound_keys.skip,
     commands = ":DocentNext/:DocentPrev",
   }
 end
@@ -78,6 +79,44 @@ function M.setup(opts)
     end
     require("docent.ui").show_float(stop.info)
   end, { desc = "Docent: re-show the current stop's info float" })
+  vim.api.nvim_create_user_command("DocentAsk", function(cmd)
+    local stops = tour.active_stops()
+    local cur = tour.current()
+    local stop = stops[cur]
+    if not stop then
+      vim.notify("docent: no active tour stop to ask about", vim.log.levels.WARN)
+      return
+    end
+    local function compose(question)
+      local title = tour.get_title()
+      local parts = {
+        ("About stop %d/%d%s — %s:%d"):format(
+          cur,
+          #stops,
+          title and (" of tour '" .. title .. "'") or "",
+          vim.fn.fnamemodify(stop.file, ":."),
+          stop.line_start
+        ),
+        "Stop info: " .. (stop.info or ""),
+      }
+      if question and question ~= "" then
+        parts[#parts + 1] = "Question: " .. question
+      end
+      local text = table.concat(parts, "\n")
+      vim.fn.setreg("+", text)
+      vim.fn.setreg('"', text)
+      vim.notify("docent: question + stop context copied — paste into your agent", vim.log.levels.INFO)
+    end
+    if cmd.args ~= "" then
+      compose(cmd.args)
+    else
+      vim.ui.input({ prompt = "Ask about this stop: " }, function(q)
+        if q then
+          compose(q)
+        end
+      end)
+    end
+  end, { nargs = "*", desc = "Docent: copy a question about the current stop, with tour context, for your agent" })
   vim.api.nvim_create_user_command("DocentEnd", function()
     if tour.stop_count() == 0 and tour.depth() < 2 then
       vim.notify("docent: no active tour", vim.log.levels.WARN)
@@ -135,6 +174,19 @@ function M.setup(opts)
     if not user_mapped(prev_key) then
       vim.keymap.set("n", prev_key, tour.prev, { desc = "Docent: previous tour stop" })
       bound_keys.prev = prev_key
+    end
+    -- skip = leave the sub-tour without finishing it; defaults to the
+    -- uppercase variant of the next key (]v -> ]V)
+    local skip_key = keymaps.skip or next_key:sub(1, -2) .. next_key:sub(-1):upper()
+    if skip_key ~= next_key and not user_mapped(skip_key) then
+      vim.keymap.set("n", skip_key, function()
+        if tour.depth() < 2 then
+          vim.notify("docent: not in a sub-tour", vim.log.levels.WARN)
+          return
+        end
+        tour.pop()
+      end, { desc = "Docent: skip the sub-tour (back to parent stop)" })
+      bound_keys.skip = skip_key
     end
   end
 end

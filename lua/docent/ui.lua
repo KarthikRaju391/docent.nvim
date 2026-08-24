@@ -69,19 +69,24 @@ function M.show_float(text)
   -- the estimate ceil(len/width) undercounts word-boundary wrapping; ask for the real height
   local wrapped = vim.api.nvim_win_text_height(float_win, {}).all
   vim.api.nvim_win_set_height(float_win, math.min(wrapped, 10))
-  local win = float_win
-  -- deferred so the jump's own CursorMoved doesn't instantly close it
-  vim.defer_fn(function()
-    if win ~= float_win or not vim.api.nvim_win_is_valid(win) then
-      return
-    end
-    float_group = vim.api.nvim_create_augroup("DocentFloat", { clear = true })
-    vim.api.nvim_create_autocmd({ "CursorMoved", "BufLeave" }, {
-      group = float_group,
-      once = true,
-      callback = M.close_float,
-    })
-  end, 100)
+  -- Close on real movement only: scroll animations and other plugins emit
+  -- CursorMoved without the cursor changing position, and the jump's own
+  -- CursorMoved is still queued when we arm — position compare absorbs both.
+  local opened_buf = vim.api.nvim_get_current_buf()
+  local opened_pos = vim.api.nvim_win_get_cursor(0)
+  float_group = vim.api.nvim_create_augroup("DocentFloat", { clear = true })
+  vim.api.nvim_create_autocmd({ "CursorMoved", "BufLeave" }, {
+    group = float_group,
+    callback = function(ev)
+      if ev.event == "CursorMoved" and vim.api.nvim_get_current_buf() == opened_buf then
+        local p = vim.api.nvim_win_get_cursor(0)
+        if p[1] == opened_pos[1] and p[2] == opened_pos[2] then
+          return
+        end
+      end
+      M.close_float()
+    end,
+  })
 end
 
 return M

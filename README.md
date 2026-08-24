@@ -45,15 +45,15 @@ Talking to your agent by voice? Voice-mode agents read each stop's info aloud as
 
 While a tour is live, pressing `<Esc>` twice within a second (normal mode) ends the whole tour. A single `<Esc>` behaves exactly as before — the transient mapping chains to whatever your `<Esc>` did (e.g. clearing search highlights) and is removed when the tour ends. Disable with `opts = { esc_ends_tour = false }`.
 
-Commands: `:DocentNext`, `:DocentPrev`, `:DocentStop <n>`, `:DocentRestart` (back to stop 1 of the active tour), `:DocentBack` (end a sub-tour), `:DocentEnd` (exit the whole tour), `:DocentInfo` (re-show the current stop's info float), `:DocentSave <title>`, `:DocentTours` (picker), `:DocentMcpCommand`. Range highlights use the `DocentRange` group (links to `Visual`).
+Commands: `:DocentNext`, `:DocentPrev`, `:DocentStop <n>`, `:DocentRestart` (back to stop 1 of the active tour), `:DocentBack` (end a sub-tour), `:DocentEnd` (exit the whole tour), `:DocentInfo` (re-show the current stop's info float), `:DocentAsk [question]` (copy a question about the current stop, with tour context, to paste into your agent), `:DocentSave <title>`, `:DocentTours` (picker), `:DocentMcpCommand`. Range highlights use the `DocentRange` group (links to `Visual`).
 
 ### Sub-tours
 
 Tours form a tree. Mid-tour you can ask a tangent question ("wait, what does the registry actually store?") and the agent branches: a sub-tour starts at your current stop, and your pacing keys now walk the tangent. Pacing past the last tangent stop pops you right back to the stop you left the main tour from — so tangents never lose your place. Only the deepest branch is active at a time.
 
 - Past-the-end pop: `]t` (or your next key) at the last sub-tour stop returns you to the parent stop.
-- `:DocentBack` ends the sub-tour explicitly and returns to the parent stop.
-- `[t` at stop 1 of a sub-tour stays put — leaving a sub-tour is always past-the-end or explicit.
+- Skip: the uppercase variant of your next key (`]v` → `]V`, configurable as `keymaps.skip`) leaves the sub-tour immediately — same as `:DocentBack`.
+- `[t` at stop 1 of a sub-tour stays put — a sub-tour is contained: you leave by finishing it, skipping it, or `:DocentBack`.
 - `:DocentRestart` restarts the deepest (active) tour only.
 - `:DocentSave` / `save_tour` saves the active (deepest) tour only — saving a whole tree is out of v1 scope.
 
