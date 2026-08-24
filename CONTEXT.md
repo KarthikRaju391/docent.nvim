@@ -63,7 +63,7 @@ Navigation + info only — no edits, no shell, no buffer writes. Agents use thei
 - `clear_tour()` / `list_tour()` — Tour lifecycle
 - `get_editor_context()` — Editor Context readback
 
-The "navigate, don't paste" behavior ships inside the protocol: MCP server `instructions` on initialize plus rich per-tool descriptions. No per-agent prompt files are maintained.
+The "navigate, don't paste" behavior ships inside the protocol: MCP server `instructions` on initialize plus rich per-tool descriptions. No per-agent prompt files are maintained. One agent-agnostic discovery aid is allowed: a single shared skill file (`~/.agents/skills/docent-tour/`) that claims the "navigate/tour my editor" intent on the skill-routing surface — where MCP instructions don't compete — and defers to the protocol contract for behavior.
 
 The tool count grows reluctantly: new capabilities extend the semantics of existing tools (flags, richer results) rather than adding tools, and anything the Agent can already do natively (e.g. tracking which Stop the user is on via `list_tour`) is not duplicated into the surface.
 
