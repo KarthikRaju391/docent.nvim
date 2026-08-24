@@ -10,7 +10,7 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
 {
-  "<your-github-user>/docent.nvim",  -- or { dir = "~/code/docent.nvim" } for a local checkout
+  "KarthikRaju391/docent.nvim",  -- or { dir = "~/code/docent.nvim" } for a local checkout
   opts = {},
   -- opts = { keymaps = { next = "]t", prev = "[t" } }  -- defaults; or keymaps = false
 }
