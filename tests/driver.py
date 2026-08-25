@@ -25,6 +25,8 @@ NVIM = os.environ.get("NVIM_BIN", "/opt/homebrew/bin/nvim")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIXTURE = os.path.realpath(os.path.join(ROOT, "tests", "fixture"))
 MINIMAL_INIT = os.path.join(ROOT, "tests", "minimal_init.lua")
+NOSAVEPROMPT_INIT = os.path.join(ROOT, "tests",
+                                 "minimal_init_nosaveprompt.lua")
 RELAY_LUA = os.path.join(ROOT, "relay", "relay.lua")
 
 APP = os.path.join(FIXTURE, "app.lua")
@@ -41,6 +43,7 @@ EXPECTED_TOOLS = {
 # to prove instructions/hints report the REAL bound keys).
 NEXT_KEY = "]v"
 PREV_KEY = "[v"
+SKIP_KEY = "]V"  # derived from NEXT_KEY: leave a sub-tour without finishing it
 DEFAULT_NEXT_KEY = "]t"
 
 DOCENT_DIR = os.path.join(FIXTURE, ".docent")
@@ -119,7 +122,7 @@ def tail(path, n=25):
 class Editor:
     """A headless 'interactive' Neovim running the docent plugin."""
 
-    def __init__(self, name, case_dir, cwd, state_dir):
+    def __init__(self, name, case_dir, cwd, state_dir, init=None):
         self.name = name
         self.sock = new_sock(name)
         self.stderr_path = os.path.join(case_dir, name + ".stderr.log")
@@ -129,7 +132,7 @@ class Editor:
         self._stderr_f = open(self.stderr_path, "wb")
         self.proc = subprocess.Popen(
             [NVIM, "--headless", "--noplugin", "-i", "NONE",
-             "-u", MINIMAL_INIT, "--listen", self.sock],
+             "-u", init or MINIMAL_INIT, "--listen", self.sock],
             cwd=cwd, env=env,
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
             stderr=self._stderr_f,
@@ -425,8 +428,10 @@ class Ctx:
         self.editors = []
         self.relays = []
 
-    def editor(self, name="editor", cwd=FIXTURE, state_dir=None, wait=True):
-        ed = Editor(name, self.case_dir, cwd, state_dir or self.state_dir)
+    def editor(self, name="editor", cwd=FIXTURE, state_dir=None, wait=True,
+               init=None):
+        ed = Editor(name, self.case_dir, cwd, state_dir or self.state_dir,
+                    init=init)
         self.editors.append(ed)
         if wait:
             ed.wait_registry()
@@ -1204,6 +1209,135 @@ def case_save_confirm_flow(ctx):
         clean_docent()
 
 
+def case_save_discard_paths(ctx):
+    """Every explicit exit must drop a pending proposal with NO prompt."""
+    clean_docent()
+    try:
+        ed = ctx.editor()
+        relay = ctx.relay()
+        relay.handshake()
+
+        # A saved tour to feed the load_tour phase (:DocentSave writes at once).
+        relay.tool_text("add_tour_stop", {"file": APP, "line_start": 3,
+                                          "info": "seed stop"})
+        ed.wait_position(APP, 3, "seed stop did not auto-jump")
+        ed.cmd("DocentSave Seed Tour")
+        wait_for(lambda: os.path.exists(tour_file("seed-tour")), 3.0,
+                 ":DocentSave did not write the seed tour")
+        relay.tool_text("clear_tour", {"all": True})
+
+        def build(nested):
+            relay.tool_text("clear_tour", {"all": True})
+            relay.tool_text("add_tour_stop", {"file": APP, "line_start": 3,
+                                              "info": "root stop 1"})
+            relay.tool_text("add_tour_stop", {"file": UTIL, "line_start": 5,
+                                              "info": "root stop 2"})
+            ed.wait_position(APP, 3, "root stop 1 did not auto-jump")
+            if nested:
+                relay.tool_text("add_tour_stop",
+                                {"file": READMEMD, "line_start": 5,
+                                 "branch": True, "info": "sub stop 1"})
+                ed.wait_position(READMEMD, 5, "branch did not auto-jump")
+
+        # A phase whose exit silently did nothing would satisfy "no prompt, no
+        # file" vacuously, so each phase also proves the exit really fired:
+        # nested exits land back on the anchor, root exits empty the tour.
+        def popped_to_anchor():
+            ed.wait_position(APP, 3, "exit did not pop back to the anchor")
+
+        def tour_gone():
+            wait_for(lambda: "util.lua" not in relay.tool_text("list_tour", {}),
+                     3.0, "exit did not end the tour")
+
+        phases = [
+            ("skip key %s" % SKIP_KEY, True,
+             lambda: ed.send_keys(SKIP_KEY), popped_to_anchor),
+            (":DocentBack", True,
+             lambda: ed.cmd("DocentBack"), popped_to_anchor),
+            ("double-<Esc>", False,
+             lambda: ed.send_keys("<Esc><Esc>"), tour_gone),
+            ("clear_tour {}", False,
+             lambda: relay.tool_text("clear_tour", {}), tour_gone),
+            ("clear_tour {all:true}", True,
+             lambda: relay.tool_text("clear_tour", {"all": True}), tour_gone),
+            ("load_tour", False,
+             lambda: relay.tool_text("load_tour", {"slug": "seed-tour"}),
+             tour_gone),
+        ]
+
+        check(ed.expr("!empty(maparg('%s', 'n', 0, 1))" % SKIP_KEY) == "1",
+              "the skip key %s is not bound, so its phase would pass "
+              "vacuously" % SKIP_KEY)
+
+        for i, (label, nested, trigger, prove_exit) in enumerate(phases):
+            title = "Discard Phase %d" % (i + 1)
+            slug = "discard-phase-%d" % (i + 1)
+            build(nested)
+            assert_pending(relay.tool_text("save_tour", {"title": title}),
+                           title, slug)
+            ed.stub_ui_input(ctx.case_dir, title)  # resets the call counter
+            trigger()
+            try:
+                prove_exit()
+            except Fail as e:
+                raise Fail("%s: %s" % (label, e))
+            time.sleep(0.5)
+            check(ed.input_count() == 0,
+                  "%s prompted to save; an explicit exit must discard the "
+                  "proposal silently" % label,
+                  expected=0, actual=ed.input_count())
+            check(not os.path.exists(tour_file(slug)),
+                  "%s wrote %s; the pending proposal must be discarded"
+                  % (label, os.path.basename(tour_file(slug))),
+                  expected="no file", actual=tour_file(slug))
+
+        relay.assert_all_json()
+    finally:
+        clean_docent()
+
+
+def case_save_prompt_disabled(ctx):
+    """save_prompt=false silences the prompt but not :DocentSave."""
+    clean_docent()
+    try:
+        ed = ctx.editor(init=NOSAVEPROMPT_INIT)
+        relay = ctx.relay()
+        relay.handshake()
+
+        ed.stub_ui_input(ctx.case_dir, "Should Never Be Used")
+
+        relay.tool_text("add_tour_stop", {"file": APP, "line_start": 3,
+                                          "info": "stop one"})
+        relay.tool_text("add_tour_stop", {"file": UTIL, "line_start": 5,
+                                          "info": "stop two"})
+        ed.wait_position(APP, 3, "stop 1 did not auto-jump")
+
+        assert_pending(relay.tool_text("save_tour", {"title": "Nosave Flow"}),
+                       "Nosave Flow", "nosave-flow")
+
+        ed.send_keys(NEXT_KEY)
+        ed.wait_position(UTIL, 5, "%s did not advance to stop 2" % NEXT_KEY)
+        ed.send_keys(NEXT_KEY)
+        time.sleep(1.0)
+
+        check(ed.input_count() == 0,
+              "save_prompt=false still prompted at the end of the tour",
+              expected=0, actual=ed.input_count())
+        check(not os.path.exists(tour_file("nosave-flow")),
+              "save_prompt=false still wrote a tour file",
+              expected="no file", actual=tour_file("nosave-flow"))
+
+        # Saving explicitly must still work in the same instance.
+        ed.cmd("DocentSave Immediate Flow")
+        wait_for(lambda: os.path.exists(tour_file("immediate-flow")), 3.0,
+                 ":DocentSave did not write immediately with "
+                 "save_prompt=false (only the prompt should be disabled)")
+
+        relay.assert_all_json()
+    finally:
+        clean_docent()
+
+
 def case_esc_ends_tour(ctx):
     ed = ctx.editor()
     relay = ctx.relay()
@@ -1291,6 +1425,8 @@ CASES = [
     ("subtour_docent_back", case_subtour_docent_back),
     ("subtour_save", case_subtour_save),
     ("save_confirm_flow", case_save_confirm_flow),
+    ("save_discard_paths", case_save_discard_paths),
+    ("save_prompt_disabled", case_save_prompt_disabled),
     ("esc_ends_tour", case_esc_ends_tour),
 ]
 

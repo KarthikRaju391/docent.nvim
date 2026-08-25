@@ -37,7 +37,10 @@ processes are killed on teardown even when a case fails.
 - `minimal_init.lua` — editor init: prepend repo to `runtimepath`, call
   `require('docent').setup({ keymaps = { next = "]v", prev = "[v" } })`
   (editors run with `--noplugin -i NONE`). The non-default pacing keys are
-  deliberate: they prove instructions/hints report the real bound keys.
+  deliberate: they prove instructions/hints report the real bound keys. The
+  skip key is derived from `next`, so here it is `]V`.
+- `minimal_init_nosaveprompt.lua` — same, plus `save_prompt = false`; used only
+  by the `save_prompt_disabled` case.
 - `fixture/` — small project with stable line numbers (`app.lua` 13 lines,
   `lib/util.lua` 11 lines, `README.md` 7 lines). Editors and the relay run
   with cwd here so registry discovery-by-cwd is exercised for real.
@@ -62,6 +65,8 @@ processes are killed on teardown even when a case fails.
 | `subtour_docent_back` | `:DocentBack` exists; from a nested state it pops (cursor back at the anchor, `depth=1`); at the root and with no tour it neither errors the instance nor moves the cursor. |
 | `subtour_save` | `save_tour` while nested proposes only (nothing on disk); confirming at the end of the sub frame saves only the active sub-tour's stops (saved JSON has exactly the 2 sub stops, each with `info` and no `narration` key). |
 | `save_confirm_flow` | All four confirmation paths, with `vim.ui.input` stubbed per phase via `luafile`: **accept** (answer = proposed title → file written), **decline** (callback gets `nil` → prompt shown, no file), **rename** (answer = an edited title → the edited slug is written and the proposed one is not), **discard** (`:DocentEnd` after a proposal → `vim.ui.input` never called, no file). |
+| `save_discard_paths` | Every other explicit exit discards a pending proposal silently — `]V` (skip), `:DocentBack`, `<Esc><Esc>`, `clear_tour {}`, `clear_tour {all:true}`, `load_tour` — each with its own title/slug so a stray write is attributable, each asserting `vim.ui.input` was never called and no file appeared. Every phase also proves its exit actually fired (nested exits land back on the anchor; root exits empty the tour) and the skip key is asserted bound up front, so no phase can pass vacuously. |
+| `save_prompt_disabled` | An editor started with `minimal_init_nosaveprompt.lua` (`save_prompt = false`): a proposal plus pacing past the last stop prompts nothing and writes nothing, while `:DocentSave <title>` in that same instance still writes immediately — only the prompt is disabled, not saving. (`save_confirm_flow`'s accept phase is the positive control showing the same key sequence *does* prompt under the default config.) |
 | `esc_ends_tour` | No docent `<Esc>` mapping before a tour; a transient normal-mode `<Esc>` mapping exists while a tour is live; a single `<Esc>` does not end the tour (list unchanged, current stop unchanged); `<Esc><Esc>` in one send ends the whole tour and removes the mapping; from inside a sub-tour, double-`<Esc>` clears the WHOLE tree. |
 
 The double-Esc feature means the driver must never run ex commands via
