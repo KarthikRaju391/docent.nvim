@@ -1,6 +1,6 @@
 # docent.nvim
 
-Let any coding agent guide you through a codebase by navigating your Neovim — jumping, highlighting, explaining in place — instead of pasting code into chat. You talk (OS-level dictation into the agent's terminal); the agent moves your editor.
+Let any coding agent guide you through a codebase by navigating your Neovim by jumping, highlighting, explaining in place instead of pasting code into chat. You talk and the agent shows it in your editor.
 
 ![docent.nvim demo — an agent tours its own source code](media/demo.gif)
 
@@ -53,17 +53,17 @@ Commands: `:DocentNext`, `:DocentPrev`, `:DocentStop <n>`, `:DocentRestart` (bac
 
 ### Sub-tours
 
-Tours form a tree. Mid-tour you can ask a tangent question ("wait, what does the registry actually store?") and the agent branches: a sub-tour starts at your current stop, and your pacing keys now walk the tangent. Pacing past the last tangent stop pops you right back to the stop you left the main tour from — so tangents never lose your place. Only the deepest branch is active at a time.
+Tours form a tree. Mid-tour you can ask a tangent question ("wait, what does the registry actually store?") and the agent branches: a sub-tour starts at your current stop, and your pacing keys now walk the tangent. Pacing past the last tangent stop pops you right back to the stop you left the main tour from, so tangents never lose your place. Only the deepest branch is active at a time.
 
 - Past-the-end pop: `]t` (or your next key) at the last sub-tour stop returns you to the parent stop.
-- Skip: the uppercase variant of your next key (`]v` → `]V`, configurable as `keymaps.skip`) leaves the sub-tour immediately — same as `:DocentBack`.
+- Skip: the uppercase variant of your next key (`]v` → `]V`, configurable as `keymaps.skip`) leaves the sub-tour immediately, same as `:DocentBack`.
 - `[t` at stop 1 of a sub-tour stays put — a sub-tour is contained: you leave by finishing it, skipping it, or `:DocentBack`.
 - `:DocentRestart` restarts the deepest (active) tour only.
 - `:DocentSave` / `save_tour` saves the active (deepest) tour only — saving a whole tree is out of v1 scope.
 
 ### Keymap conflicts (LazyVim etc.)
 
-The `]t` / `[t` defaults are only set if you haven't mapped them yourself (Nvim's built-in tag defaults are overridden, plugin/user maps are not). On LazyVim, todo-comments.nvim owns `]t`/`[t`, so docent skips them — pick your own keys:
+The `]t` / `[t` defaults are only set if you haven't mapped them yourself (Nvim's built-in tag defaults are overridden, plugin/user maps are not). On LazyVim, todo-comments.nvim owns `]t`/`[t`, so docent skips them. Pick your own keys:
 
 ```lua
 opts = { keymaps = { next = "]v", prev = "[v" } }
@@ -73,16 +73,4 @@ Agents are told your real pacing keys: the relay reads what docent actually boun
 
 ### Saved tours
 
-A good tour is documentation. (This repo ships one of itself — ask your agent what saved tours it can find here.) Confirmed tours live at `.docent/tours/<slug>.json` in your project, with file paths relative to the project root, so commit the directory and your whole team (and their agents) gets the tour.
-
-**The agent proposes; you decide.** `save_tour` never writes — it only proposes a title. When you pace past the last stop of a tour, docent asks: `Save tour as: <proposed title>` — press Enter to accept, type over it to rename, or `<Esc>` to decline. Explicit exits (`]V` skip, `:DocentBack`, `:DocentEnd`, double-`<Esc>`, `clear_tour`, loading another tour) discard the proposal silently — no nagging when you're trying to leave. `:DocentSave <title>` still writes immediately, since typing it is itself the confirmation. Don't want the prompt at all? `opts = { save_prompt = false }`.
-
-Agents are instructed to check `list_saved_tours` before re-deriving a flow, and to load an existing tour instead; `load_tour` / `:DocentTours` brings one back and jumps to stop 1. Saved tours can drift as code changes — lines are approximate, and that's accepted v1 behavior. `clear_tour` only clears the live tour, never saved files.
-
-The agent's tool surface is navigation + info only — no edits, no shell. Tools: `jump_to`, `highlight`, `show_info`, `add_tour_stop`, `clear_tour`, `list_tour`, `save_tour`, `list_saved_tours`, `load_tour`, `get_editor_context`.
-
-## Status
-
-Early but real: both flows — a single jump and a paced multi-stop tour — are verified end to end against two different agents (Claude Code and Pi) in live repos, and the suite runs 19 integration cases that drive an actual relay against an actual Neovim.
-
-Deliberately not included: docent does no text-to-speech of its own (a voice-mode agent speaks the stop info as its reply), no voice capture (use OS-level dictation into your agent's terminal), no tour sidebar, and no editor state beyond file, cursor, and selection. Saved tours store line numbers, so they drift as code changes — the lines are a starting point, not a guarantee.
+A good tour is documentation. (This repo ships one of itself! Ask your agent what saved tours it can find here.) Confirmed tours live at `.docent/tours/<slug>.json` in your project, with file paths relative to the project root, so commit the directory and your whole team (and their agents) gets the tour.
