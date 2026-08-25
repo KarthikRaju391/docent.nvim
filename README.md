@@ -83,9 +83,3 @@ A good tour is documentation. (This repo ships one of itself! Ask your agent wha
 Agents are instructed to check `list_saved_tours` before re-deriving a flow, and to load an existing tour instead. `load_tour` and `:DocentTours` bring one back and jump to stop 1. `clear_tour` only clears the live tour, never saved files.
 
 The agent's tool surface is navigation and info only, with no edits and no shell. Tools: `jump_to`, `highlight`, `show_info`, `add_tour_stop`, `clear_tour`, `list_tour`, `save_tour`, `list_saved_tours`, `load_tour`, `get_editor_context`.
-
-## Status
-
-Early but real. Both flows, a single jump and a paced multi-stop tour, are verified end to end against two different agents (Claude Code and Pi) in live repos, and the test suite runs 19 integration cases that drive an actual relay against an actual Neovim.
-
-Deliberately not included: docent does no text-to-speech of its own, since a voice-mode agent speaks the stop info as its reply. No voice capture either, so use OS-level dictation into your agent's terminal. No tour sidebar, and no editor state beyond file, cursor, and selection. Saved tours store line numbers, so they drift as the code changes. The lines are a starting point, not a guarantee.
