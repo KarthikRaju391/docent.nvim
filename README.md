@@ -2,6 +2,10 @@
 
 Let any coding agent guide you through a codebase by navigating your Neovim — jumping, highlighting, explaining in place — instead of pasting code into chat. You talk (OS-level dictation into the agent's terminal); the agent moves your editor.
 
+![docent.nvim demo — an agent tours its own source code](media/demo.gif)
+
+*Above: docent giving a tour of docent. The agent queues stops, you pace them with `]v`, a tangent branches a sub-tour and pops back where you left it, and the finished tour asks to be saved. Everything on screen is the real plugin driven over real MCP — `media/demo.tape` re-renders it.*
+
 Docent is an MCP server: Claude Code, Pi, Gemini CLI, or any MCP-capable agent connects via a stdio relay (`nvim --headless -l relay.lua`) that finds your Neovim through an instance registry. See `CONTEXT.md` for the domain language and `docs/adr/` for the decisions.
 
 ## Install

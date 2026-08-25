@@ -43,7 +43,7 @@ function M.save(title, stops, cwd)
   end
   f:write(vim.json.encode(data))
   f:close()
-  return { slug = slug, path = path, stops = rel_stops }
+  return { slug = slug, path = path, rel_path = relative(path, cwd), stops = rel_stops }
 end
 
 function M.list(cwd)

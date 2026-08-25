@@ -39,7 +39,7 @@ local function confirm_save(proposal, stops)
       vim.notify("docent: " .. tostring(res), vim.log.levels.ERROR)
       return
     end
-    vim.notify(("docent: saved tour '%s' to %s"):format(title, res.path), vim.log.levels.INFO)
+    vim.notify(("docent: saved tour '%s' to %s"):format(title, (res.rel_path or res.path)), vim.log.levels.INFO)
   end)
 end
 
