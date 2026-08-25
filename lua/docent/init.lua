@@ -45,6 +45,7 @@ function M.setup(opts)
   require("docent.ui").setup_hl()
   require("docent.esc").set_enabled(opts.esc_ends_tour ~= false)
   local tour = require("docent.tour")
+  tour.set_save_prompt(opts.save_prompt ~= false)
 
   vim.api.nvim_create_user_command("DocentNext", function()
     tour.next()
@@ -98,6 +99,7 @@ function M.setup(opts)
       return
     end
     tour.set_title(cmd.args)
+    tour.propose_save(nil) -- typing :DocentSave IS the confirmation
     vim.notify(("docent: saved tour '%s' to %s"):format(cmd.args, res.path), vim.log.levels.INFO)
   end, { nargs = "+", desc = "Docent: save the current tour as <title>" })
   vim.api.nvim_create_user_command("DocentTours", function()

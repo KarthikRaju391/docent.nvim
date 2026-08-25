@@ -19,7 +19,7 @@ local function build_instructions(keys)
     "Otherwise queue one add_tour_stop per hop in reading order with a 1-2 sentence info each — the user paces through stops themselves "
       .. pacing
       .. "; never re-jump them.",
-    "After building a good tour, save_tour it with a short feature-name title so it is there next time.",
+    "After building a good tour, call save_tour to PROPOSE a short feature-name title — it writes nothing; the user is asked to confirm, rename, or decline when they finish pacing the tour, so never tell them it was saved.",
     "If the user asks a tangent question mid-tour ('wait, what does X do?'), branch: call add_tour_stop with branch=true for the tangent's stops; when the tangent is done, clear_tour pops them back to where they left the main tour.",
     'Call get_editor_context first when the user says "this" or refers to what they\'re looking at; during a tour, combine it with list_tour to know which stop they are on.',
     "When the conversation with the user is happening by voice, read each stop's info aloud as your reply while navigating — the float and the spoken info are the same text; still never paste code.",
@@ -122,7 +122,7 @@ local TOOLS = {
   },
   {
     name = "save_tour",
-    description = "Persist the active tour level to <project>/.docent/tours/<slug>.json (committable, so teammates and other agents find it). Saves only the active (deepest) level — a live sub-tour saves the sub-tour, not the whole tree. Call after building a good tour, with a short feature-name title. Errors if the tour is empty.",
+    description = "PROPOSE saving the active tour level under a short feature-name title. This writes nothing: the proposal is held, and when the user paces past the tour's last stop they are asked to confirm, rename, or decline it; explicit exits discard it silently. Do NOT tell the user the tour was saved — the decision is theirs and you are not told the outcome. Confirmed tours land in <project>/.docent/tours/<slug>.json (committable, so teammates and other agents find them). Applies to the active (deepest) level only. Errors if the tour is empty.",
     inputSchema = {
       type = "object",
       properties = {

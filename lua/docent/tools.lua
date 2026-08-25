@@ -87,9 +87,8 @@ function M.save_tour(args)
   if tour.stop_count() == 0 then
     error("no active tour to save", 0)
   end
-  local saved = require("docent.store").save(args.title, tour.active_stops(), vim.fn.getcwd())
-  tour.set_title(args.title)
-  return saved
+  tour.propose_save(args.title)
+  return { status = "pending_confirmation", title = args.title, stops = tour.stop_count() }
 end
 
 function M.list_saved_tours(_)

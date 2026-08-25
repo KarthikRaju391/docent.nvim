@@ -3,12 +3,57 @@ local ui = require("docent.ui")
 local M = {}
 
 -- Stack of frames; only the deepest is active (paced, listed, appended to).
--- frame = { stops, current, title, anchor } — anchor is the parent frame's
--- stop index this sub-tour branched from (nil for root).
+-- frame = { stops, current, title, anchor, proposal } — anchor is the parent
+-- frame's stop index this sub-tour branched from (nil for root); proposal is a
+-- title the agent proposed via save_tour, confirmed by the user only when the
+-- frame ends naturally (paced past its last stop).
 local frames = {}
+
+local save_prompt = true
 
 local function top()
   return frames[#frames]
+end
+
+function M.set_save_prompt(v)
+  save_prompt = v
+end
+
+function M.propose_save(title)
+  local f = top()
+  if f then
+    f.proposal = title
+  end
+end
+
+-- Ask the user to confirm (or rename, or decline) a proposed title. Async:
+-- vim.ui.input calls back later, so callers must not depend on the outcome.
+local function confirm_save(proposal, stops)
+  vim.ui.input({ prompt = "Save tour as: ", default = proposal }, function(title)
+    if not title or title:match("^%s*$") then
+      vim.notify("docent: tour not saved", vim.log.levels.INFO)
+      return
+    end
+    local ok, res = pcall(require("docent.store").save, title, stops)
+    if not ok then
+      vim.notify("docent: " .. tostring(res), vim.log.levels.ERROR)
+      return
+    end
+    vim.notify(("docent: saved tour '%s' to %s"):format(title, res.path), vim.log.levels.INFO)
+  end)
+end
+
+-- Consume a frame's proposal (never prompt twice for the same one).
+local function prompt_if_proposed(frame)
+  local proposal = frame and frame.proposal
+  if not proposal then
+    return
+  end
+  frame.proposal = nil
+  if not save_prompt then
+    return
+  end
+  confirm_save(proposal, vim.deepcopy(frame.stops))
 end
 
 function M.depth()
@@ -122,14 +167,17 @@ function M.next()
     return
   end
   if #frames > 1 then
+    local ended = f
     local parent = M.pop()
     vim.notify(
       ("docent: end of sub-tour — back to %s (%d/%d)"):format(parent.title or "tour", parent.current, #parent.stops),
       vim.log.levels.INFO
     )
+    prompt_if_proposed(ended)
     return
   end
   vim.notify(("docent: end of tour (%d/%d)"):format(#f.stops, #f.stops), vim.log.levels.INFO)
+  prompt_if_proposed(f)
 end
 
 function M.prev()

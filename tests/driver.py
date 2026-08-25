@@ -59,6 +59,28 @@ def wait_for(pred, timeout, what):
         time.sleep(0.1)
     raise Fail(what)
 
+
+def tour_file(slug):
+    return os.path.join(DOCENT_DIR, "tours", slug + ".json")
+
+
+def assert_pending(text, title, slug):
+    """save_tour must only propose: pending status, no path, nothing on disk."""
+    check("pending" in text.lower(),
+          "save_tour result does not report a pending confirmation",
+          expected="a status like pending_confirmation", actual=text[:400])
+    check(title in text,
+          "save_tour result does not echo the proposed title",
+          expected=title, actual=text[:400])
+    data = _try_json(text)
+    if data is not None:
+        check("path" not in data,
+              "save_tour result carries a path; it must not write anything "
+              "before the user confirms", actual=data)
+    check(not os.path.exists(tour_file(slug)),
+          "save_tour wrote a file before the user confirmed",
+          expected="no file", actual=tour_file(slug))
+
 RESPONSE_TIMEOUT = 5.0
 
 # Unix sockets are capped at 104 bytes on macOS, so they cannot live under the
@@ -162,6 +184,37 @@ class Editor:
         real double-Esc, ending the whole tour.
         """
         self.expr('execute("%s")' % command)
+
+    def stub_ui_input(self, case_dir, answer, name="ui_input_stub.lua"):
+        """Replace vim.ui.input with a recording stub.
+
+        answer=None declines (callback gets nil); a string accepts with that
+        text. Call count / prompt / default land in g: vars so a test can prove
+        the prompt was — or was not — shown.
+        """
+        cb_arg = "nil" if answer is None else json.dumps(answer)
+        lua = (
+            "vim.g.docent_test_input_count = 0\n"
+            "vim.g.docent_test_input_prompt = ''\n"
+            "vim.g.docent_test_input_default = ''\n"
+            "vim.ui.input = function(opts, cb)\n"
+            "  vim.g.docent_test_input_count = "
+            "(vim.g.docent_test_input_count or 0) + 1\n"
+            "  vim.g.docent_test_input_prompt = (opts and opts.prompt) or ''\n"
+            "  vim.g.docent_test_input_default = (opts and opts.default) or ''\n"
+            "  if cb then cb(%s) end\n"
+            "end\n" % cb_arg
+        )
+        path = os.path.join(case_dir, name)
+        with open(path, "w") as f:
+            f.write(lua)
+        self.cmd("luafile " + path)
+
+    def input_count(self):
+        return int(self.expr("get(g:, 'docent_test_input_count', 0)"))
+
+    def input_default(self):
+        return self.expr("get(g:, 'docent_test_input_default', '')")
 
     def current(self):
         """(absolute file path, cursor line) of the editor right now."""
@@ -702,11 +755,28 @@ def case_persistent_tours(ctx):
                             {"file": f, "line_start": l, "info": n})
         ed.wait_position(APP, 3, "first tour stop did not auto-jump")
 
-        relay.tool_text("save_tour", {"title": "Import Flow"})
+        # save_tour only PROPOSES: nothing on disk until the user confirms.
+        text = relay.tool_text("save_tour", {"title": "Import Flow"})
+        assert_pending(text, "Import Flow", "import-flow")
+
+        # Confirm at the end of the tour: pace past the last stop, accepting
+        # the proposed title at the vim.ui.input prompt.
+        ed.stub_ui_input(ctx.case_dir, "Import Flow")
+        ed.send_keys(NEXT_KEY)
+        ed.wait_position(UTIL, 5, "%s did not advance to stop 2" % NEXT_KEY)
+        ed.send_keys(NEXT_KEY)
+        ed.wait_position(READMEMD, 2, "%s did not advance to stop 3" % NEXT_KEY)
+        ed.send_keys(NEXT_KEY)
 
         tour_path = os.path.join(DOCENT_DIR, "tours", "import-flow.json")
         wait_for(lambda: os.path.exists(tour_path), 3.0,
-                 "save_tour did not create %s" % tour_path)
+                 "pacing past the last stop with a pending proposal did not "
+                 "write %s" % tour_path)
+        check(ed.input_count() >= 1,
+              "the tour was saved without ever prompting via vim.ui.input")
+        check(ed.input_default() == "Import Flow",
+              "the confirmation prompt did not default to the proposed title",
+              expected="Import Flow", actual=ed.input_default())
         with open(tour_path) as f:
             saved = json.load(f)
         check(saved.get("title") == "Import Flow", "saved tour title wrong",
@@ -1015,10 +1085,20 @@ def case_subtour_save(ctx):
         relay.tool_text("add_tour_stop", {"file": READMEMD, "line_start": 5,
                                           "info": "sub stop 2"})
 
-        relay.tool_text("save_tour", {"title": "Sub Flow"})
-        tour_path = os.path.join(DOCENT_DIR, "tours", "sub-flow.json")
+        text = relay.tool_text("save_tour", {"title": "Sub Flow"})
+        assert_pending(text, "Sub Flow", "sub-flow")
+
+        # Confirm at the end of the SUB frame.
+        ed.stub_ui_input(ctx.case_dir, "Sub Flow")
+        ed.send_keys(NEXT_KEY)
+        ed.wait_position(READMEMD, 5,
+                         "%s did not advance to sub stop 2" % NEXT_KEY)
+        ed.send_keys(NEXT_KEY)
+
+        tour_path = tour_file("sub-flow")
         wait_for(lambda: os.path.exists(tour_path), 3.0,
-                 "save_tour while nested did not create %s" % tour_path)
+                 "pacing past the last sub stop with a pending proposal did "
+                 "not write %s" % tour_path)
         with open(tour_path) as f:
             saved = json.load(f)
         stops = saved.get("stops")
@@ -1035,6 +1115,89 @@ def case_subtour_save(ctx):
             check("narration" not in stop,
                   "saved sub stop %d still has a 'narration' key "
                   "(renamed to 'info')" % i, actual=stop)
+
+        relay.assert_all_json()
+    finally:
+        clean_docent()
+
+
+def case_save_confirm_flow(ctx):
+    """The four confirmation paths: accept, decline, rename, discard."""
+    clean_docent()
+    try:
+        ed = ctx.editor()
+        relay = ctx.relay()
+        relay.handshake()
+
+        def queue_two():
+            relay.tool_text("clear_tour", {"all": True})
+            relay.tool_text("add_tour_stop", {"file": APP, "line_start": 3,
+                                              "info": "stop one"})
+            relay.tool_text("add_tour_stop", {"file": UTIL, "line_start": 5,
+                                              "info": "stop two"})
+            ed.wait_position(APP, 3, "stop 1 did not auto-jump")
+
+        def pace_past_end():
+            ed.send_keys(NEXT_KEY)
+            ed.wait_position(UTIL, 5,
+                             "%s did not advance to stop 2" % NEXT_KEY)
+            ed.send_keys(NEXT_KEY)
+
+        # --- accept: prompt answered with the proposed title -> file written.
+        queue_two()
+        assert_pending(relay.tool_text("save_tour", {"title": "Accept Flow"}),
+                       "Accept Flow", "accept-flow")
+        ed.stub_ui_input(ctx.case_dir, "Accept Flow")
+        pace_past_end()
+        wait_for(lambda: os.path.exists(tour_file("accept-flow")), 3.0,
+                 "accept path: confirming the prompt did not write %s"
+                 % tour_file("accept-flow"))
+
+        # --- decline: prompt cancelled (nil) -> nothing written.
+        queue_two()
+        assert_pending(relay.tool_text("save_tour", {"title": "Decline Flow"}),
+                       "Decline Flow", "decline-flow")
+        ed.stub_ui_input(ctx.case_dir, None)
+        pace_past_end()
+        wait_for(lambda: ed.input_count() >= 1, 3.0,
+                 "decline path: the confirmation prompt was never shown")
+        time.sleep(0.5)
+        check(not os.path.exists(tour_file("decline-flow")),
+              "decline path: cancelling the prompt still wrote a tour file",
+              expected="no file", actual=tour_file("decline-flow"))
+
+        # --- rename: prompt answered with an edited title.
+        queue_two()
+        assert_pending(relay.tool_text("save_tour", {"title": "Original Name"}),
+                       "Original Name", "original-name")
+        ed.stub_ui_input(ctx.case_dir, "Edited Name")
+        pace_past_end()
+        renamed = tour_file("edited-name")
+        wait_for(lambda: os.path.exists(renamed), 3.0,
+                 "rename path: the edited title was not used (expected %s)"
+                 % renamed)
+        with open(renamed) as f:
+            saved = json.load(f)
+        check(saved.get("title") == "Edited Name",
+              "rename path: saved title is not the edited one",
+              expected="Edited Name", actual=saved.get("title"))
+        check(not os.path.exists(tour_file("original-name")),
+              "rename path: the proposed title was also written",
+              expected="no file", actual=tour_file("original-name"))
+
+        # --- discard: an explicit exit drops the proposal with NO prompt.
+        queue_two()
+        assert_pending(relay.tool_text("save_tour", {"title": "Discard Flow"}),
+                       "Discard Flow", "discard-flow")
+        ed.stub_ui_input(ctx.case_dir, "Discard Flow")  # resets the counter
+        ed.cmd("DocentEnd")
+        time.sleep(0.8)
+        check(ed.input_count() == 0,
+              ":DocentEnd prompted for a save; an explicit exit must discard "
+              "the proposal silently", expected=0, actual=ed.input_count())
+        check(not os.path.exists(tour_file("discard-flow")),
+              ":DocentEnd wrote a tour file; the proposal must be discarded",
+              expected="no file", actual=tour_file("discard-flow"))
 
         relay.assert_all_json()
     finally:
@@ -1127,6 +1290,7 @@ CASES = [
     ("subtour_clear_all", case_subtour_clear_all),
     ("subtour_docent_back", case_subtour_docent_back),
     ("subtour_save", case_subtour_save),
+    ("save_confirm_flow", case_save_confirm_flow),
     ("esc_ends_tour", case_esc_ends_tour),
 ]
 

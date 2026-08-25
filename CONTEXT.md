@@ -50,6 +50,7 @@ _Avoid_: state, environment
 - A **Tour** contains one or more **Stops**, each carrying one **Info**.
 - A **Jump** carries an optional **Info** but never belongs to a **Tour**.
 - The **Agent** advances nothing in a **Tour** after the first Stop — the user paces with keymaps (`]t` / `[t`) while the Agent may keep queueing Stops ahead.
+- The **Agent** never writes a **Saved Tour** on its own: `save_tour` only proposes a title, and the user confirms (or renames, or declines) when the Tour ends. Same division as pacing — the Agent proposes, the user decides.
 - A **Sub-tour** is anchored to exactly one parent **Stop**; pacing past its end (or an explicit back command) pops to the parent Tour at that Stop.
 
 ## Tool surface (the whole contract)

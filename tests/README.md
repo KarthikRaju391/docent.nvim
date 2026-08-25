@@ -55,18 +55,28 @@ processes are killed on teardown even when a case fails.
 | `discovery_two_instances` | With two registered editors (fixture cwd vs unrelated cwd), a relay spawned in `tests/fixture` targets the fixture instance (proved via `get_editor_context`). |
 | `discovery_empty_registry` | With an empty registry, the relay returns a clean error (isError result or JSON-RPC error) rather than hanging or dumping a stack trace on stdout; stdout stays JSON-only. |
 | `pacing_keys` | `require('docent').pacing_keys()` reports the configured keys; with a live instance discoverable at initialize time, `instructions` mention the real bound key (`]v`) and not the default (`]t`); the first `add_tour_stop` result carries a `pace_with` hint with the real key. |
-| `persistent_tours` | `save_tour` on an empty tour → `isError=true`; after 3 stops, `save_tour {title:"Import Flow"}` writes `<project>/.docent/tours/import-flow.json` with `title`/`slug`/`created_at`/`stops`, every `stop.file` relative to the project root (and resolvable there) with `line_start` + `info` (and no leftover `narration` key); `list_saved_tours` reports it with a stop count; after `clear_tour`, `load_tour {slug:"import-flow"}` navigates to stop 1, restores `list_tour`, and returns the full stops list; unknown slug → `isError=true`. |
+| `persistent_tours` | `save_tour` on an empty tour → `isError=true`; after 3 stops, `save_tour {title:"Import Flow"}` only *proposes* (pending status, no `path`, nothing on disk); pacing past the last stop prompts via `vim.ui.input` (defaulting to the proposed title) and, on accept, writes `<project>/.docent/tours/import-flow.json` with `title`/`slug`/`created_at`/`stops`, every `stop.file` relative to the project root (and resolvable there) with `line_start` + `info` (and no leftover `narration` key); `list_saved_tours` reports it with a stop count; after `clear_tour`, `load_tour {slug:"import-flow"}` navigates to stop 1, restores `list_tour`, and returns the full stops list; unknown slug → `isError=true`. |
 | `user_commands` | `:DocentRestart`, `:DocentSave`, `:DocentTours`, `:DocentInfo`, `:DocentEnd` exist (`exists(':Cmd') == 2`); after `]v`-ing to stop 2, `:DocentRestart` returns the cursor to stop 1; `:DocentSave <title>` writes a tour file under `.docent/tours/`. |
 | `subtour_branching` | From root stop 2, `add_tour_stop {branch:true}` auto-navigates to the sub-tour's stop 1; `[v` at sub stop 1 stays put (no pop); the second sub stop does not move the cursor; nested `list_tour` shows the sub frame (2 stops, `depth=2`, `parent = {title, anchor:2, total:3}`); `]v` paces the sub-tour and `]v` past its end pops back to root stop 2 (`depth=1`, `current=2`); a nested `clear_tour {}` pops one level (result carries `popped_to` with `current=2`, cursor back at the anchor); `clear_tour {}` at the root empties everything. |
 | `subtour_clear_all` | From a nested state, `clear_tour {all:true}` wipes the whole tree in one call. |
 | `subtour_docent_back` | `:DocentBack` exists; from a nested state it pops (cursor back at the anchor, `depth=1`); at the root and with no tour it neither errors the instance nor moves the cursor. |
-| `subtour_save` | `save_tour` while nested saves only the active sub-tour's stops (saved JSON has exactly the 2 sub stops, each with `info` and no `narration` key). |
+| `subtour_save` | `save_tour` while nested proposes only (nothing on disk); confirming at the end of the sub frame saves only the active sub-tour's stops (saved JSON has exactly the 2 sub stops, each with `info` and no `narration` key). |
+| `save_confirm_flow` | All four confirmation paths, with `vim.ui.input` stubbed per phase via `luafile`: **accept** (answer = proposed title → file written), **decline** (callback gets `nil` → prompt shown, no file), **rename** (answer = an edited title → the edited slug is written and the proposed one is not), **discard** (`:DocentEnd` after a proposal → `vim.ui.input` never called, no file). |
 | `esc_ends_tour` | No docent `<Esc>` mapping before a tour; a transient normal-mode `<Esc>` mapping exists while a tour is live; a single `<Esc>` does not end the tour (list unchanged, current stop unchanged); `<Esc><Esc>` in one send ends the whole tour and removes the mapping; from inside a sub-tour, double-`<Esc>` clears the WHOLE tree. |
 
 The double-Esc feature means the driver must never run ex commands via
 `remote-send '<Esc>:Cmd<CR>'` while a tour is live — two such sends within 1s
 are a real double-Esc and end the tour. `Editor.cmd()` uses
 `--remote-expr execute(...)` instead.
+
+`save_tour` never writes on its own — it proposes, and the write happens when
+the user answers the end-of-tour `vim.ui.input` prompt. Cases that need that
+prompt stub `vim.ui.input` in the target instance (`Editor.stub_ui_input`,
+loaded with `:luafile`); the stub records call count / prompt / default in `g:`
+vars, so a test can also prove the prompt was *never* shown.
+
+Cleanup only ever removes `tests/fixture/.docent/` — never the repo-root
+`.docent/`, which holds real shipped tours.
 
 All relay reads have a 5s timeout, so a hung relay fails the case instead of
 blocking the run. Tool-call failures are asserted to arrive as

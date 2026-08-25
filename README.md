@@ -69,7 +69,11 @@ Agents are told your real pacing keys: the relay reads what docent actually boun
 
 ### Saved tours
 
-A good tour is documentation. (This repo ships one of itself — ask your agent what saved tours it can find here.) `save_tour` (or `:DocentSave <title>`) writes it to `.docent/tours/<slug>.json` in your project — file paths are stored relative to the project root, so commit the directory and your whole team (and their agents) gets the tour. Agents are instructed to check `list_saved_tours` before re-deriving a flow, and to load an existing tour instead; `load_tour` / `:DocentTours` brings one back and jumps to stop 1. Saved tours can drift as code changes — lines are approximate, and that's accepted v1 behavior. `clear_tour` only clears the live tour, never saved files.
+A good tour is documentation. (This repo ships one of itself — ask your agent what saved tours it can find here.) Confirmed tours live at `.docent/tours/<slug>.json` in your project, with file paths relative to the project root, so commit the directory and your whole team (and their agents) gets the tour.
+
+**The agent proposes; you decide.** `save_tour` never writes — it only proposes a title. When you pace past the last stop of a tour, docent asks: `Save tour as: <proposed title>` — press Enter to accept, type over it to rename, or `<Esc>` to decline. Explicit exits (`]V` skip, `:DocentBack`, `:DocentEnd`, double-`<Esc>`, `clear_tour`, loading another tour) discard the proposal silently — no nagging when you're trying to leave. `:DocentSave <title>` still writes immediately, since typing it is itself the confirmation. Don't want the prompt at all? `opts = { save_prompt = false }`.
+
+Agents are instructed to check `list_saved_tours` before re-deriving a flow, and to load an existing tour instead; `load_tour` / `:DocentTours` brings one back and jumps to stop 1. Saved tours can drift as code changes — lines are approximate, and that's accepted v1 behavior. `clear_tour` only clears the live tour, never saved files.
 
 The agent's tool surface is navigation + info only — no edits, no shell. Tools: `jump_to`, `highlight`, `show_info`, `add_tour_stop`, `clear_tour`, `list_tour`, `save_tour`, `list_saved_tours`, `load_tour`, `get_editor_context`.
 
