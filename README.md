@@ -2,9 +2,9 @@
 
 Let any coding agent guide you through a codebase by navigating your Neovim by jumping, highlighting, explaining in place instead of pasting code into chat. You talk and the agent shows it in your editor.
 
-![docent.nvim demo — an agent tours its own source code](media/demo.gif)
+![docent.nvim demo](media/demo.gif)
 
-*Above: docent giving a tour of docent. The agent queues stops, you pace them with `]v`, a tangent branches a sub-tour and pops back where you left it, and the finished tour asks to be saved. Everything on screen is the real plugin driven over real MCP — `media/demo.tape` re-renders it.*
+*Above: docent giving a tour of docent. The agent queues stops, you pace them with `]v`, a tangent branches a sub-tour and pops back where you left it, and the finished tour asks to be saved. Everything on screen is the real plugin driven over real MCP. `media/demo.tape` re-renders it.*
 
 Docent is an MCP server: Claude Code, Pi, Gemini CLI, or any MCP-capable agent connects via a stdio relay (`nvim --headless -l relay.lua`) that finds your Neovim through an instance registry. See `CONTEXT.md` for the domain language and `docs/adr/` for the decisions.
 
@@ -36,7 +36,7 @@ Per agent:
 - **Gemini CLI**: `gemini mcp add docent nvim --headless -l /path/to/docent.nvim/relay/relay.lua`
 - **Pi** (or any client configured via JSON): add a stdio server with `command: "nvim"` and `args: ["--headless", "-l", "/path/to/docent.nvim/relay/relay.lua"]`
 
-Run the agent from inside (a subdirectory of) the directory where Neovim is running — the relay targets the instance whose cwd contains the agent's, most recently focused winning ties.
+Run the agent from inside (a subdirectory of) the directory where Neovim is running, the relay targets the instance whose cwd contains the agent's, most recently focused winning ties.
 
 ## Usage
 
