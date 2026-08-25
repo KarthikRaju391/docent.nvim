@@ -13,10 +13,31 @@ function M.pacing_keys()
   }
 end
 
-function M.mcp_command()
+-- exepath resolves the stable symlink (/opt/homebrew/bin/nvim); progpath is
+-- version-pinned (.../Cellar/neovim/0.12.2/...) and breaks on upgrade.
+function M.nvim_path()
+  local p = vim.fn.exepath("nvim")
+  return p ~= "" and p or vim.v.progpath
+end
+
+function M.relay_command()
   local src = debug.getinfo(1, "S").source:sub(2)
   local repo = vim.fn.fnamemodify(src, ":p:h:h:h")
-  return ("claude mcp add docent -- nvim --headless -l %s/relay/relay.lua"):format(repo)
+  return ("%s --headless -l %s/relay/relay.lua"):format(M.nvim_path(), repo)
+end
+
+function M.mcp_command()
+  local relay = M.relay_command()
+  return table.concat({
+    "claude mcp add docent -- " .. relay,
+    "amp mcp add docent -- " .. relay,
+    "codex mcp add docent -- " .. relay,
+    'pi: in ~/.pi/agent/mcp.json add mcpServers.docent = { "command": "'
+      .. M.nvim_path()
+      .. '", "args": ["--headless", "-l", "'
+      .. relay:match("%-l (.+)$")
+      .. '"] }',
+  }, "\n")
 end
 
 -- Nvim's built-in defaults (e.g. ]t -> :tnext) don't count as user mappings.

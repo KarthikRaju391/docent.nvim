@@ -24,17 +24,20 @@ Or call `require("docent").setup()` yourself. Setup registers this Neovim instan
 
 ## Agent registration
 
-Run `:DocentMcpCommand` in Neovim to get the exact command with your install path. It prints something like:
-
-```
-claude mcp add docent -- nvim --headless -l /path/to/docent.nvim/relay/relay.lua
-```
-
-Per agent:
+Run `:DocentMcpCommand` in Neovim — it prints these lines with your actual install path filled in:
 
 - **Claude Code**: `claude mcp add docent -- nvim --headless -l /path/to/docent.nvim/relay/relay.lua`
-- **Gemini CLI**: `gemini mcp add docent nvim --headless -l /path/to/docent.nvim/relay/relay.lua`
-- **Pi** (or any client configured via JSON): add a stdio server with `command: "nvim"` and `args: ["--headless", "-l", "/path/to/docent.nvim/relay/relay.lua"]`
+- **Amp**: `amp mcp add docent -- nvim --headless -l /path/to/docent.nvim/relay/relay.lua`
+- **Codex**: `codex mcp add docent -- nvim --headless -l /path/to/docent.nvim/relay/relay.lua`
+- **Pi** (or any client configured by JSON): add to `~/.pi/agent/mcp.json`
+
+  ```json
+  { "mcpServers": { "docent": {
+      "command": "nvim",
+      "args": ["--headless", "-l", "/path/to/docent.nvim/relay/relay.lua"] } } }
+  ```
+
+Use an absolute path to the `nvim` binary if your agent launches with a stripped `PATH` (Pi and Codex do) — `:DocentMcpCommand` already emits one. Check the connection with `amp mcp doctor`, `codex mcp get docent`, or `/mcp` in Claude Code.
 
 Run the agent from inside (a subdirectory of) the directory where Neovim is running, the relay targets the instance whose cwd contains the agent's, most recently focused winning ties.
 
