@@ -77,11 +77,8 @@ Agents are instructed to check `list_saved_tours` before re-deriving a flow, and
 
 The agent's tool surface is navigation + info only — no edits, no shell. Tools: `jump_to`, `highlight`, `show_info`, `add_tour_stop`, `clear_tour`, `list_tour`, `save_tour`, `list_saved_tours`, `load_tour`, `get_editor_context`.
 
-## v1 definition of done
+## Status
 
-In a real repo, both intents work end-to-end against **two different agents** (Claude Code + one other):
+Early but real: both flows — a single jump and a paced multi-stop tour — are verified end to end against two different agents (Claude Code and Pi) in live repos, and the suite runs 19 integration cases that drive an actual relay against an actual Neovim.
 
-1. **Jump** — "where is X handled?" → cursor lands there with an info float.
-2. **Tour** — "walk me through flow Y" → agent queues stops; user paces with `]t` / `[t`.
-
-Out of v1 scope: TTS of stop info, tour sidebar, voice capture of any kind, editor state beyond file/cursor/selection.
+Deliberately not included: docent does no text-to-speech of its own (a voice-mode agent speaks the stop info as its reply), no voice capture (use OS-level dictation into your agent's terminal), no tour sidebar, and no editor state beyond file, cursor, and selection. Saved tours store line numbers, so they drift as code changes — the lines are a starting point, not a guarantee.
